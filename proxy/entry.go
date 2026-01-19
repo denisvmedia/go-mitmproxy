@@ -29,7 +29,7 @@ func (l *wrapListener) Accept() (net.Conn, error) {
 	connCtx := newConnContext(wc, proxy)
 	wc.connCtx = connCtx
 
-	for _, addon := range proxy.Addons {
+	for _, addon := range proxy.addonRegistry.Get() {
 		addon.ClientConnected(connCtx.ClientConn)
 	}
 
@@ -79,7 +79,7 @@ func (c *wrapClientConn) Close() error {
 	c.closeMu.Unlock()
 	close(c.closeChan)
 
-	for _, addon := range c.proxy.Addons {
+	for _, addon := range c.proxy.addonRegistry.Get() {
 		addon.ClientDisconnected(c.connCtx.ClientConn)
 	}
 
@@ -113,7 +113,7 @@ func (c *wrapServerConn) Close() error {
 	c.closeErr = c.Conn.Close()
 	c.closeMu.Unlock()
 
-	for _, addon := range c.proxy.Addons {
+	for _, addon := range c.proxy.addonRegistry.Get() {
 		addon.ServerDisconnected(c.connCtx)
 	}
 
@@ -135,7 +135,7 @@ type entry struct {
 func newEntry(proxy *Proxy) *entry {
 	e := &entry{proxy: proxy}
 	e.server = &http.Server{
-		Addr:    proxy.Opts.Addr,
+		Addr:    proxy.config.Addr,
 		Handler: e,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			return context.WithValue(ctx, connContextKey, c.(*wrapClientConn).connCtx)
@@ -194,7 +194,7 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 	if !req.URL.IsAbs() || req.URL.Host == "" {
 		res = helper.NewResponseCheck(res)
-		for _, addon := range proxy.Addons {
+		for _, addon := range proxy.addonRegistry.Get() {
 			addon.AccessProxyServer(req, res)
 		}
 		if res, ok := res.(*helper.ResponseCheck); ok {
@@ -207,8 +207,8 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// http proxy
-	proxy.attacker.initHTTPDialFn(req)
-	proxy.attacker.attack(res, req)
+	proxy.attacker.InitHTTPDialFn(req)
+	proxy.attacker.Attack(res, req)
 }
 
 func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
@@ -231,7 +231,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	defer f.finish()
 
 	// trigger addon event Requestheaders
-	for _, addon := range proxy.Addons {
+	for _, addon := range proxy.addonRegistry.Get() {
 		addon.Requestheaders(f)
 	}
 
@@ -268,7 +268,7 @@ func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn,
 	}
 
 	// trigger addon event Responseheaders
-	for _, addon := range e.proxy.Addons {
+	for _, addon := range e.proxy.addonRegistry.Get() {
 		addon.Responseheaders(f)
 	}
 
@@ -282,7 +282,7 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 		"host", req.Host,
 	)
 
-	conn, err := proxy.getUpstreamConn(req.Context(), req)
+	conn, err := proxy.upstreamManager.GetUpstreamConn(req.Context(), req)
 	if err != nil {
 		logger.Error("get upstream conn failed", "error", err)
 		res.WriteHeader(502)
@@ -307,7 +307,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		"host", req.Host,
 	)
 
-	conn, err := proxy.attacker.httpsDial(req.Context(), req)
+	conn, err := proxy.attacker.HTTPSDial(req.Context(), req)
 	if err != nil {
 		logger.Error("httpsDial failed", "error", err)
 		res.WriteHeader(502)
@@ -338,7 +338,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 
 	// is tls
 	f.ConnContext.ClientConn.TLS = true
-	proxy.attacker.httpsTLSDial(req.Context(), cconn, conn)
+	proxy.attacker.HTTPSTLSDial(req.Context(), cconn, conn)
 }
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
@@ -363,7 +363,7 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 
 	if !helper.IsTLS(peek) {
 		// todo: http, ws
-		conn, err := proxy.attacker.httpsDial(req.Context(), req)
+		conn, err := proxy.attacker.HTTPSDial(req.Context(), req)
 		if err != nil {
 			cconn.Close()
 			logger.Error("httpsDial failed", "error", err)
@@ -377,5 +377,5 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 
 	// is tls
 	f.ConnContext.ClientConn.TLS = true
-	proxy.attacker.httpsLazyAttack(req.Context(), cconn, req)
+	proxy.attacker.HTTPSLazyAttack(req.Context(), cconn, req)
 }

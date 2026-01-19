@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
@@ -28,12 +29,18 @@ func (*ChangeHTML) Response(f *proxy.Flow) {
 }
 
 func main() {
-	opts := &proxy.Options{
+	ca, err := cert.NewSelfSignCA("")
+	if err != nil {
+		slog.Error("failed to create CA", "error", err)
+		return
+	}
+
+	config := &proxy.Config{
 		Addr:              ":9080",
 		StreamLargeBodies: 1024 * 1024 * 5,
 	}
 
-	p, err := proxy.NewProxy(opts)
+	p, err := proxy.NewProxyWithDefaults(config, ca)
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		return

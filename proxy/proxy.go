@@ -5,135 +5,114 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
-	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
+// Options contains settings for creating a CA.
+// This is kept for backward compatibility with the NewCA function.
 type Options struct {
-	Debug             int
-	Addr              string
-	StreamLargeBodies int64 // When request or response body is larger than this number of bytes, switch to stream mode
-	SslInsecure       bool
-	CaRootPath        string
-	NewCaFunc         func() (cert.CA, error) // Function to create CA
-	Upstream          string
-	LogFilePath       string // Path to write logs to file
+	CaRootPath string
+	NewCaFunc  func() (cert.CA, error) // Function to create CA
 }
 
 type Proxy struct {
-	Opts    *Options
-	Version string
-	Addons  []Addon
+	Version         string
+	config          *Config
+	addonRegistry   *AddonRegistry
+	upstreamManager *UpstreamManager
 
 	entry           *entry
-	attacker        *attacker
-	shouldIntercept func(req *http.Request) bool              // req is received by proxy.server
-	upstreamProxy   func(req *http.Request) (*url.URL, error) // req is received by proxy.server, not client request
+	attacker        AttackerService
+	ca              cert.CA
+	shouldIntercept func(req *http.Request) bool // req is received by proxy.server
 	authProxy       func(res http.ResponseWriter, req *http.Request) (bool, error)
 }
 
 // proxy.server req context key.
 var proxyReqCtxKey = new(struct{})
 
-func NewProxy(opts *Options) (*Proxy, error) {
-	if opts.StreamLargeBodies <= 0 {
-		opts.StreamLargeBodies = 1024 * 1024 * 5 // default: 5mb
+// NewProxy creates a new Proxy with the given dependencies.
+// All dependencies must be created and configured before calling this function.
+// For a simpler API with default configuration, use NewProxyWithDefaults.
+func NewProxy(config *Config, ca cert.CA, addonRegistry *AddonRegistry, upstreamManager *UpstreamManager, attacker AttackerService) (*Proxy, error) {
+	if config.StreamLargeBodies <= 0 {
+		config.StreamLargeBodies = 1024 * 1024 * 5 // default: 5mb
 	}
 
 	proxy := &Proxy{
-		Opts:    opts,
-		Version: "1.8.8",
-		Addons:  make([]Addon, 0),
+		Version:         "1.8.8",
+		config:          config,
+		addonRegistry:   addonRegistry,
+		upstreamManager: upstreamManager,
+		attacker:        attacker,
+		ca:              ca,
 	}
 
 	proxy.entry = newEntry(proxy)
 
-	attacker, err := newAttacker(proxy)
-	if err != nil {
-		return nil, err
-	}
-	proxy.attacker = attacker
-
 	return proxy, nil
 }
 
-func (prx *Proxy) AddAddon(addon Addon) {
-	prx.Addons = append(prx.Addons, addon)
-}
+// NewProxyWithDefaults creates a new Proxy with default UpstreamManager and Attacker.
+// This is a convenience function for simple use cases. For more control over
+// UpstreamManager and Attacker configuration, create them separately and use NewProxy.
+func NewProxyWithDefaults(config *Config, ca cert.CA) (*Proxy, error) {
+	addonRegistry := NewAddonRegistry()
+	upstreamManager := NewUpstreamManager(config)
 
-func (prx *Proxy) Start() error {
-	go func() {
-		if err := prx.attacker.start(); err != nil {
-			slog.Error("attacker start failed", "error", err)
-		}
-	}()
-	return prx.entry.start()
-}
-
-func (prx *Proxy) Close() error {
-	return prx.entry.close()
-}
-
-func (prx *Proxy) Shutdown(ctx context.Context) error {
-	return prx.entry.shutdown(ctx)
-}
-
-func (prx *Proxy) GetCertificate() x509.Certificate {
-	return *prx.attacker.ca.GetRootCA()
-}
-
-func (prx *Proxy) GetCertificateByCN(commonName string) (*tls.Certificate, error) {
-	return prx.attacker.ca.GetCert(commonName)
-}
-
-func (prx *Proxy) SetShouldInterceptRule(rule func(req *http.Request) bool) {
-	prx.shouldIntercept = rule
-}
-
-func (prx *Proxy) SetUpstreamProxy(fn func(req *http.Request) (*url.URL, error)) {
-	prx.upstreamProxy = fn
-}
-
-func (prx *Proxy) realUpstreamProxy() func(*http.Request) (*url.URL, error) {
-	return func(cReq *http.Request) (*url.URL, error) {
-		req, ok := cReq.Context().Value(proxyReqCtxKey).(*http.Request)
-		if !ok {
-			panic("failed to get original request from context")
-		}
-		return prx.getUpstreamProxyURL(req)
-	}
-}
-
-func (prx *Proxy) getUpstreamProxyURL(req *http.Request) (*url.URL, error) {
-	if prx.upstreamProxy != nil {
-		return prx.upstreamProxy(req)
-	}
-	if len(prx.Opts.Upstream) > 0 {
-		return url.Parse(prx.Opts.Upstream)
-	}
-	cReq := &http.Request{URL: &url.URL{Scheme: "https", Host: req.Host}}
-	return http.ProxyFromEnvironment(cReq)
-}
-
-func (prx *Proxy) getUpstreamConn(ctx context.Context, req *http.Request) (net.Conn, error) {
-	proxyURL, err := prx.getUpstreamProxyURL(req)
+	attacker, err := NewAttacker(AttackerArgs{
+		CA:              ca,
+		UpstreamManager: upstreamManager,
+		AddonRegistry:   addonRegistry,
+		Config:          config,
+	})
 	if err != nil {
 		return nil, err
 	}
-	var conn net.Conn
-	address := helper.CanonicalAddr(req.URL)
-	if proxyURL != nil {
-		conn, err = helper.GetProxyConn(ctx, proxyURL, address, prx.Opts.SslInsecure)
-	} else {
-		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
-	}
-	return conn, err
+
+	return NewProxy(config, ca, addonRegistry, upstreamManager, attacker)
 }
 
-func (prx *Proxy) SetAuthProxy(fn func(res http.ResponseWriter, req *http.Request) (bool, error)) {
-	prx.authProxy = fn
+func (p *Proxy) AddAddon(addon Addon) {
+	p.addonRegistry.Add(addon)
+}
+
+func (p *Proxy) Start() error {
+	go func() {
+		if err := p.attacker.Start(); err != nil {
+			slog.Error("attacker start failed", "error", err)
+		}
+	}()
+	return p.entry.start()
+}
+
+func (p *Proxy) Close() error {
+	return p.entry.close()
+}
+
+func (p *Proxy) Shutdown(ctx context.Context) error {
+	return p.entry.shutdown(ctx)
+}
+
+func (p *Proxy) GetCertificate() x509.Certificate {
+	return *p.ca.GetRootCA()
+}
+
+func (p *Proxy) GetCertificateByCN(commonName string) (*tls.Certificate, error) {
+	return p.ca.GetCert(commonName)
+}
+
+func (p *Proxy) SetShouldInterceptRule(rule func(req *http.Request) bool) {
+	p.shouldIntercept = rule
+}
+
+func (p *Proxy) SetUpstreamProxy(fn func(req *http.Request) (*url.URL, error)) {
+	p.upstreamManager.SetUpstreamProxy(fn)
+}
+
+func (p *Proxy) SetAuthProxy(fn func(res http.ResponseWriter, req *http.Request) (bool, error)) {
+	p.authProxy = fn
 }

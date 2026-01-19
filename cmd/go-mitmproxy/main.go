@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/denisvmedia/go-mitmproxy/addon"
+	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 	"github.com/denisvmedia/go-mitmproxy/web"
@@ -53,17 +54,20 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	opts := &proxy.Options{
-		Debug:             config.Debug,
+	ca, err := cert.NewSelfSignCA(config.CertPath)
+	if err != nil {
+		slog.Error("failed to create CA", "error", err)
+		os.Exit(1)
+	}
+
+	proxyConfig := &proxy.Config{
 		Addr:              config.Addr,
 		StreamLargeBodies: 1024 * 1024 * 5,
 		SslInsecure:       config.SslInsecure,
-		CaRootPath:        config.CertPath,
 		Upstream:          config.Upstream,
-		LogFilePath:       config.LogFile,
 	}
 
-	p, err := proxy.NewProxy(opts)
+	p, err := proxy.NewProxyWithDefaults(proxyConfig, ca)
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		os.Exit(1)

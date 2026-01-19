@@ -90,10 +90,16 @@ func (hlp *testProxyHelper) init(t *testing.T) {
 	hlp.httpsEndpoint = httpsEndpoint
 
 	// start proxy
-	testProxy, err := NewProxy(&Options{
+	proxyCA, err := cert.NewSelfSignCA("")
+	handleError(t, err)
+
+	config := &Config{
 		Addr:        hlp.proxyAddr, // some random port
 		SslInsecure: true,
-	})
+	}
+
+	var testProxy *Proxy
+	testProxy, err = NewProxyWithDefaults(config, proxyCA)
 	handleError(t, err)
 	testProxy.AddAddon(&interceptAddon{})
 	testOrderAddonInstance := &testOrderAddon{

@@ -9,12 +9,12 @@ import (
 )
 
 func main() {
-	opts := &proxy.Options{
+	config := &proxy.Config{
 		Addr:              ":8081",
 		StreamLargeBodies: 1024 * 1024 * 5,
-		NewCaFunc:         NewTrustedCA, // use custom cert
 	}
-	p, err := proxy.NewProxy(opts)
+
+	p, err := proxy.NewProxyWithDefaults(config, NewTrustedCA())
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		return

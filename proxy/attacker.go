@@ -16,55 +16,79 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
+// attackerListener is a custom net.Listener implementation that accepts connections
+// through a channel. It is used internally by the Attacker to handle intercepted
+// HTTP/1.1 connections.
 type attackerListener struct {
 	connChan chan net.Conn
 }
 
+// accept sends a connection to the listener's channel for processing.
 func (l *attackerListener) accept(conn net.Conn) {
 	l.connChan <- conn
 }
 
+// Accept waits for and returns the next connection to the listener.
 func (l *attackerListener) Accept() (net.Conn, error) {
 	c := <-l.connChan
 	return c, nil
 }
-func (*attackerListener) Close() error   { return nil }
+
+// Close closes the listener. This is a no-op for attackerListener.
+func (*attackerListener) Close() error { return nil }
+
+// Addr returns the listener's network address. This returns nil for attackerListener.
 func (*attackerListener) Addr() net.Addr { return nil }
 
+// attackerConn wraps a net.Conn with its associated connection context.
+// It is used to pass connection metadata through the HTTP server's ConnContext.
 type attackerConn struct {
 	net.Conn
 	connCtx *ConnContext
 }
 
-type attacker struct {
-	proxy    *Proxy
-	ca       cert.CA
-	server   *http.Server
-	h2Server *http2.Server
-	client   *http.Client
-	listener *attackerListener
+// Attacker handles the man-in-the-middle attack functionality for intercepting
+// and modifying HTTP/HTTPS traffic. It manages TLS handshakes, certificate generation,
+// and proxying of requests between clients and servers.
+type Attacker struct {
+	ca              cert.CA
+	upstreamManager *UpstreamManager
+	addonManager    *AddonRegistry
+	config          *Config
+	server          *http.Server
+	h2Server        *http2.Server
+	client          *http.Client
+	listener        *attackerListener
 }
 
-func newAttacker(proxy *Proxy) (*attacker, error) {
-	ca, err := newCa(proxy.Opts)
-	if err != nil {
-		return nil, err
-	}
+// AttackerArgs contains all dependencies required by the Attacker.
+type AttackerArgs struct {
+	CA              cert.CA
+	UpstreamManager *UpstreamManager
+	AddonRegistry   *AddonRegistry
+	Config          *Config
+}
 
-	a := &attacker{
-		proxy: proxy,
-		ca:    ca,
+// NewAttacker creates a new Attacker instance with the given dependencies.
+// It initializes the HTTP client, HTTP server, and HTTP/2 server.
+// The attacker is configured to handle both HTTP/1.1 and HTTP/2 connections.
+func NewAttacker(deps AttackerArgs) (*Attacker, error) {
+	a := &Attacker{
+		ca:              deps.CA,
+		upstreamManager: deps.UpstreamManager,
+		addonManager:    deps.AddonRegistry,
+		config:          deps.Config,
 		client: &http.Client{
 			Transport: &http.Transport{
-				Proxy:              proxy.realUpstreamProxy(),
+				Proxy:              deps.UpstreamManager.RealUpstreamProxy(),
 				ForceAttemptHTTP2:  true,
 				DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: proxy.Opts.SslInsecure,
+					InsecureSkipVerify: deps.Config.GetSslInsecure(),
 					KeyLogWriter:       helper.GetTLSKeyLogWriter(),
 				},
 			},
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			CheckRedirect: func(*http.Request, []*http.Request) error {
 				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
@@ -89,19 +113,17 @@ func newAttacker(proxy *Proxy) (*attacker, error) {
 	return a, nil
 }
 
-func newCa(opts *Options) (cert.CA, error) {
-	newCaFunc := opts.NewCaFunc
-	if newCaFunc != nil {
-		return newCaFunc()
-	}
-	return cert.NewSelfSignCA(opts.CaRootPath)
-}
-
-func (a *attacker) start() error {
+// Start begins serving HTTP connections through the attacker's listener.
+// This method blocks until the server is shut down or an error occurs.
+func (a *Attacker) Start() error {
 	return a.server.Serve(a.listener)
 }
 
-func (a *attacker) serveConn(clientTLSConn *tls.Conn, connCtx *ConnContext) {
+// serveConn handles an intercepted TLS connection from a client.
+// It determines the negotiated protocol (HTTP/1.1 or HTTP/2) and routes the connection
+// to the appropriate handler. For HTTP/2, it sets up an HTTP/2 server connection.
+// For HTTP/1.1, it passes the connection to the HTTP/1.1 listener.
+func (a *Attacker) serveConn(clientTLSConn *tls.Conn, connCtx *ConnContext) {
 	connCtx.ClientConn.NegotiatedProtocol = clientTLSConn.ConnectionState().NegotiatedProtocol
 
 	if connCtx.ClientConn.NegotiatedProtocol == "h2" && connCtx.ServerConn != nil {
@@ -140,7 +162,10 @@ func (a *attacker) serveConn(clientTLSConn *tls.Conn, connCtx *ConnContext) {
 	})
 }
 
-func (a *attacker) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+// ServeHTTP implements the http.Handler interface for the Attacker.
+// It handles incoming HTTP requests, including WebSocket upgrades and regular HTTP/HTTPS requests.
+// This method ensures the request URL is properly formatted before passing it to the Attack method.
+func (a *Attacker) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if strings.EqualFold(req.Header.Get("Connection"), "Upgrade") && strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
 		// wss
 		defaultWebSocket.wss(res, req)
@@ -153,24 +178,26 @@ func (a *attacker) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if req.URL.Host == "" {
 		req.URL.Host = req.Host
 	}
-	a.attack(res, req)
+	a.Attack(res, req)
 }
 
-func (a *attacker) initHTTPDialFn(req *http.Request) {
+// InitHTTPDialFn initializes the dial function for plain HTTP connections.
+// This function is called lazily when the first HTTP request is made on a connection.
+// It establishes a connection to the upstream server and configures an HTTP/1.1 client.
+func (a *Attacker) InitHTTPDialFn(req *http.Request) {
 	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
 	if !ok {
 		panic("failed to get ConnContext from request context")
 	}
 	connCtx.dialFn = func(ctx context.Context) error {
 		addr := helper.CanonicalAddr(req.URL)
-		c, err := a.proxy.getUpstreamConn(ctx, req)
+		c, err := a.upstreamManager.GetUpstreamConn(ctx, req)
 		if err != nil {
 			return err
 		}
-		proxy := a.proxy
 		cw := &wrapServerConn{
 			Conn:    c,
-			proxy:   proxy,
+			proxy:   connCtx.proxy,
 			connCtx: connCtx,
 		}
 
@@ -192,7 +219,7 @@ func (a *attacker) initHTTPDialFn(req *http.Request) {
 		}
 
 		connCtx.ServerConn = serverConn
-		for _, addon := range proxy.Addons {
+		for _, addon := range a.addonManager.Get() {
 			addon.ServerConnected(connCtx)
 		}
 
@@ -200,14 +227,15 @@ func (a *attacker) initHTTPDialFn(req *http.Request) {
 	}
 }
 
-// send clientHello to server, server handshake.
-func (a *attacker) serverTLSHandshake(ctx context.Context, connCtx *ConnContext) error {
-	proxy := a.proxy
+// serverTLSHandshake performs a TLS handshake with the upstream server.
+// It uses the client's ClientHello information to mimic the client's TLS configuration
+// when connecting to the server. This helps maintain transparency in the MITM process.
+func (a *Attacker) serverTLSHandshake(ctx context.Context, connCtx *ConnContext) error {
 	clientHello := connCtx.ClientConn.clientHello
 	serverConn := connCtx.ServerConn
 
 	serverTLSConfig := &tls.Config{
-		InsecureSkipVerify: proxy.Opts.SslInsecure,
+		InsecureSkipVerify: a.config.GetSslInsecure(),
 		KeyLogWriter:       helper.GetTLSKeyLogWriter(),
 		ServerName:         clientHello.ServerName,
 		NextProtos:         clientHello.SupportedProtos,
@@ -235,7 +263,7 @@ func (a *attacker) serverTLSHandshake(ctx context.Context, connCtx *ConnContext)
 	}
 	serverTLSState := serverTLSConn.ConnectionState()
 	serverConn.tlsState = &serverTLSState
-	for _, addon := range proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		addon.TLSEstablishedServer(connCtx)
 	}
 
@@ -256,14 +284,17 @@ func (a *attacker) serverTLSHandshake(ctx context.Context, connCtx *ConnContext)
 	return nil
 }
 
-func (a *attacker) initHTTPSDialFn(req *http.Request) {
+// InitHTTPSDialFn initializes the dial function for HTTPS connections.
+// This function is called lazily when the first HTTPS request is made on a connection.
+// It establishes both a plain connection and performs the TLS handshake with the upstream server.
+func (a *Attacker) InitHTTPSDialFn(req *http.Request) {
 	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
 	if !ok {
 		panic("failed to get ConnContext from request context")
 	}
 
 	connCtx.dialFn = func(ctx context.Context) error {
-		_, err := a.httpsDial(ctx, req)
+		_, err := a.HTTPSDial(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -274,14 +305,16 @@ func (a *attacker) initHTTPSDialFn(req *http.Request) {
 	}
 }
 
-func (a *attacker) httpsDial(ctx context.Context, req *http.Request) (net.Conn, error) {
-	proxy := a.proxy
+// HttpsDial establishes a plain TCP connection to the upstream HTTPS server.
+// It creates a server connection and notifies addons that the server connection has been established.
+// The TLS handshake is performed separately by serverTLSHandshake.
+func (a *Attacker) HTTPSDial(ctx context.Context, req *http.Request) (net.Conn, error) {
 	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
 	if !ok {
 		panic("failed to get ConnContext from request context")
 	}
 
-	plainConn, err := proxy.getUpstreamConn(ctx, req)
+	plainConn, err := a.upstreamManager.GetUpstreamConn(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -290,20 +323,29 @@ func (a *attacker) httpsDial(ctx context.Context, req *http.Request) (net.Conn, 
 	serverConn.Address = req.Host
 	serverConn.Conn = &wrapServerConn{
 		Conn:    plainConn,
-		proxy:   proxy,
+		proxy:   connCtx.proxy,
 		connCtx: connCtx,
 	}
 	connCtx.ServerConn = serverConn
-	for _, addon := range connCtx.proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		addon.ServerConnected(connCtx)
 	}
 
 	return serverConn.Conn, nil
 }
 
-func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
+// HTTPSTLSDial performs a full MITM TLS handshake for HTTPS connections.
+// It coordinates the TLS handshakes between the client and proxy, and between the proxy and server.
+// The process involves:
+// 1. Starting a client TLS handshake in a goroutine
+// 2. Receiving the client's ClientHello
+// 3. Performing a server TLS handshake with the upstream server
+// 4. Generating a certificate for the client based on the server's negotiated protocol
+// 5. Completing the client TLS handshake
+// 6. Passing the connection to serveConn for HTTP request handling.
+func (a *Attacker) HTTPSTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	logger := slog.Default().With(
+	logger := slog.With(
 		"in", "Proxy.attacker.httpsTlsDial",
 		"host", connCtx.ClientConn.Conn.RemoteAddr().String(),
 	)
@@ -380,13 +422,17 @@ func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	case <-clientHandshakeDoneChan:
 	}
 
-	// will go to attacker.ServeHTTP
+	// will go to Attacker.ServeHTTP
 	a.serveConn(clientTLSConn, connCtx)
 }
 
-func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *http.Request) {
+// HTTPSLazyAttack performs a lazy MITM TLS handshake for HTTPS connections.
+// Unlike HttpsTLSDial, this method only performs the client TLS handshake without
+// immediately connecting to the upstream server. The server connection is established
+// lazily when the first request is made. This approach only supports HTTP/1.1.
+func (a *Attacker) HTTPSLazyAttack(ctx context.Context, cconn net.Conn, req *http.Request) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	logger := slog.Default().With(
+	logger := slog.With(
 		"in", "Proxy.attacker.httpsLazyAttack",
 		"host", connCtx.ClientConn.Conn.RemoteAddr().String(),
 	)
@@ -412,12 +458,15 @@ func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *htt
 		return
 	}
 
-	// will go to attacker.ServeHTTP
-	a.initHTTPSDialFn(req)
+	// will go to Attacker.ServeHTTP
+	a.InitHTTPSDialFn(req)
 	a.serveConn(clientTLSConn, connCtx)
 }
 
-func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Reader, rawReqURLHost, rawReqURLScheme string, res http.ResponseWriter, logger *slog.Logger) (*http.Response, error) {
+// executeProxyRequest creates and executes the proxy request to the upstream server.
+// It handles both separate client mode (for modified requests) and connection reuse mode.
+// The method returns the upstream server's response or an error if the request fails.
+func (a *Attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Reader, rawReqURLHost, rawReqURLScheme string, res http.ResponseWriter, logger *slog.Logger) (*http.Response, error) {
 	proxyReqCtx := context.WithValue(req.Context(), proxyReqCtxKey, req)
 	proxyReq, err := http.NewRequestWithContext(proxyReqCtx, f.Request.Method, f.Request.URL.String(), reqBody)
 	if err != nil {
@@ -474,8 +523,11 @@ func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Re
 	return proxyRes, nil
 }
 
-func (*attacker) handleResponseHeadersAddons(f *Flow, proxy *Proxy) bool {
-	for _, addon := range proxy.Addons {
+// handleResponseHeadersAddons triggers the Responseheaders addon event for all registered addons.
+// It returns true if any addon provides an early response (by setting f.Response.Body),
+// indicating that the normal response flow should be bypassed.
+func (a *Attacker) handleResponseHeadersAddons(f *Flow) bool {
+	for _, addon := range a.addonManager.Get() {
 		addon.Responseheaders(f)
 		if f.Response.Body != nil {
 			return true // early response
@@ -484,13 +536,18 @@ func (*attacker) handleResponseHeadersAddons(f *Flow, proxy *Proxy) bool {
 	return false
 }
 
-func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy, logger *slog.Logger) (io.Reader, bool) {
+// readResponseBody reads and buffers the response body from the upstream server.
+// If the response body is too large (exceeds StreamLargeBodies threshold), it switches
+// to streaming mode. In non-streaming mode, it triggers the Response addon event.
+// Returns the response body reader and a boolean indicating success.
+func (a *Attacker) readResponseBody(f *Flow, proxyRes *http.Response, logger *slog.Logger) (io.Reader, bool) {
 	var resBody io.Reader = proxyRes.Body
 	if f.Stream {
 		return resBody, true
 	}
 
-	resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, proxy.Opts.StreamLargeBodies)
+	streamThreshold := a.config.GetStreamLargeBodies()
+	resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, streamThreshold)
 	resBody = r
 	if err != nil {
 		logger.Error("failed to buffer response body", "error", err)
@@ -498,7 +555,7 @@ func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy
 	}
 
 	if resBuf == nil {
-		logger.Warn("response body too large, switching to stream", "threshold", proxy.Opts.StreamLargeBodies)
+		logger.Warn("response body too large, switching to stream", "threshold", streamThreshold)
 		f.Stream = true
 		return resBody, true
 	}
@@ -506,14 +563,17 @@ func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy
 	f.Response.Body = resBuf
 
 	// trigger addon event Response
-	for _, addon := range proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		addon.Response(f)
 	}
 
 	return resBody, true
 }
 
-func (*attacker) replyToClient(res http.ResponseWriter, response *Response, body io.Reader, logger *slog.Logger) {
+// replyToClient sends the HTTP response back to the client.
+// It writes the response headers, status code, and body (from multiple possible sources).
+// The body can come from a reader, a BodyReader field, or a Body byte slice.
+func (*Attacker) replyToClient(res http.ResponseWriter, response *Response, body io.Reader, logger *slog.Logger) {
 	if response.Header != nil {
 		for key, value := range response.Header {
 			for _, v := range value {
@@ -546,8 +606,11 @@ func (*attacker) replyToClient(res http.ResponseWriter, response *Response, body
 	}
 }
 
-func (*attacker) handleRequestAddons(f *Flow, proxy *Proxy) bool {
-	for _, addon := range proxy.Addons {
+// handleRequestAddons triggers the Requestheaders addon event for all registered addons.
+// It returns true if any addon provides an early response (by setting f.Response),
+// indicating that the request should not be forwarded to the upstream server.
+func (a *Attacker) handleRequestAddons(f *Flow) bool {
+	for _, addon := range a.addonManager.Get() {
 		addon.Requestheaders(f)
 		if f.Response != nil {
 			return true // early response
@@ -556,13 +619,18 @@ func (*attacker) handleRequestAddons(f *Flow, proxy *Proxy) bool {
 	return false
 }
 
-func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logger *slog.Logger) (io.Reader, bool) {
+// readRequestBody reads and buffers the request body from the client.
+// If the request body is too large (exceeds StreamLargeBodies threshold), it switches
+// to streaming mode. In non-streaming mode, it triggers the Request addon event.
+// Returns the request body reader and a boolean indicating success.
+func (a *Attacker) readRequestBody(f *Flow, req *http.Request, logger *slog.Logger) (io.Reader, bool) {
 	var reqBody io.Reader = req.Body
 	if f.Stream {
 		return reqBody, true
 	}
 
-	reqBuf, r, err := helper.ReaderToBuffer(req.Body, proxy.Opts.StreamLargeBodies)
+	streamThreshold := a.config.GetStreamLargeBodies()
+	reqBuf, r, err := helper.ReaderToBuffer(req.Body, streamThreshold)
 	reqBody = r
 	if err != nil {
 		logger.Error("failed to buffer request body", "error", err)
@@ -570,7 +638,7 @@ func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logge
 	}
 
 	if reqBuf == nil {
-		logger.Warn("request body too large, switching to stream", "threshold", proxy.Opts.StreamLargeBodies)
+		logger.Warn("request body too large, switching to stream", "threshold", streamThreshold)
 		f.Stream = true
 		return reqBody, true
 	}
@@ -578,7 +646,7 @@ func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logge
 	f.Request.Body = reqBuf
 
 	// trigger addon event Request
-	for _, addon := range proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		addon.Request(f)
 		if f.Response != nil {
 			return nil, true // early response
@@ -587,10 +655,23 @@ func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logge
 	return bytes.NewReader(f.Request.Body), true
 }
 
-func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
-	proxy := a.proxy
-
-	logger := slog.Default().With(
+// Attack is the main request handling method that processes HTTP/HTTPS requests.
+// It orchestrates the complete request/response flow:
+// 1. Creates a new Flow and associates it with the connection context
+// 2. Triggers Requestheaders addon event
+// 3. Reads and buffers the request body (or streams if too large)
+// 4. Triggers Request addon event
+// 5. Applies stream request modifiers
+// 6. Executes the proxy request to the upstream server
+// 7. Triggers Responseheaders addon event
+// 8. Reads and buffers the response body (or streams if too large)
+// 9. Triggers Response addon event
+// 10. Applies stream response modifiers
+// 11. Sends the response back to the client
+//
+// The method includes panic recovery to handle addon errors gracefully.
+func (a *Attacker) Attack(res http.ResponseWriter, req *http.Request) {
+	logger := slog.With(
 		"in", "Proxy.attacker.attack",
 		"url", req.URL,
 		"method", req.Method,
@@ -599,7 +680,7 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	// when addons panic
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Warn("Recovered from panic in attacker.attack", "error", err)
+			logger.Warn("Recovered from panic in Attacker.attack", "error", err)
 		}
 	}()
 
@@ -618,13 +699,13 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	rawReqURLScheme := f.Request.URL.Scheme
 
 	// trigger addon event Requestheaders
-	if a.handleRequestAddons(f, proxy) {
+	if a.handleRequestAddons(f) {
 		a.replyToClient(res, f.Response, nil, logger)
 		return
 	}
 
 	// Read request body
-	reqBody, ok := a.readRequestBody(f, req, proxy, logger)
+	reqBody, ok := a.readRequestBody(f, req, logger)
 	if !ok {
 		res.WriteHeader(502)
 		return
@@ -634,7 +715,7 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, addon := range proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		reqBody = addon.StreamRequestModifier(f, reqBody)
 	}
 
@@ -656,19 +737,19 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// trigger addon event Responseheaders
-	if a.handleResponseHeadersAddons(f, proxy) {
+	if a.handleResponseHeadersAddons(f) {
 		a.replyToClient(res, f.Response, nil, logger)
 		return
 	}
 
 	// Read response body
-	resBody, ok := a.readResponseBody(f, proxyRes, proxy, logger)
+	resBody, ok := a.readResponseBody(f, proxyRes, logger)
 	if !ok {
 		res.WriteHeader(502)
 		return
 	}
 
-	for _, addon := range proxy.Addons {
+	for _, addon := range a.addonManager.Get() {
 		resBody = addon.StreamResponseModifier(f, resBody)
 	}
 

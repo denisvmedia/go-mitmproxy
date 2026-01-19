@@ -19,12 +19,12 @@ type TrustedCA struct {
 	cacheMu sync.Mutex
 }
 
-func NewTrustedCA() (cert.CA, error) {
+func NewTrustedCA() cert.CA {
 	ca := &TrustedCA{
 		cache: lru.New(100),
 		group: new(singleflight.Group),
 	}
-	return ca, nil
+	return ca
 }
 
 func (*TrustedCA) GetRootCA() *x509.Certificate {
