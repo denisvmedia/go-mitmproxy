@@ -1,16 +1,20 @@
+BIN_DIR := bin
+
 all: mitmproxy
 
 .PHONY: mitmproxy
 mitmproxy:
-	go build -o go-mitmproxy cmd/go-mitmproxy/*.go
+	mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/go-mitmproxy cmd/go-mitmproxy/*.go
 
 .PHONY: dummycert
 dummycert:
-	go build -o dummycert cmd/dummycert/main.go
+	mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/dummycert cmd/dummycert/main.go
 
 .PHONY: clean
 clean:
-	rm -f go-mitmproxy dummycert
+	rm -rf $(BIN_DIR)
 
 # add -race to check data race
 # add -count=1 to disable test cache
