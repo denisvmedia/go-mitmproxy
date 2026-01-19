@@ -21,3 +21,11 @@ test:
 .PHONY: dev
 dev:
 	go run $(shell ls cmd/go-mitmproxy/*.go | grep -v _test.go)
+
+.PHONY: lint-go
+lint-go:
+	golangci-lint run --timeout=30m ./...
+
+.PHONY: lint-go-fix
+lint-go-fix:
+	golangci-lint run --fix --timeout=30m ./...
