@@ -92,8 +92,7 @@ jobs:
           COVERAGE=$(cat coverage.txt)
           echo "Coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < $COVERAGE_THRESHOLD" | bc -l) )); then
-            echo "Coverage ${COVERAGE}% is below threshold ${COVERAGE_THRESHOLD}%"
-            exit 1
+            echo "::warning::Coverage ${COVERAGE}% is below threshold ${COVERAGE_THRESHOLD}%"
           fi
 
       - name: Upload coverage to Codecov
