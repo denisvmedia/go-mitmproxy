@@ -250,7 +250,6 @@ class App extends React.Component<IProps, IState> {
             <div style={{ marginRight: '10px' }}>
               {this.state.wsStatus === 'open' ? <Badge pill bg="success">on</Badge> : <Badge pill bg="danger">off</Badge>}
             </div>
-            <a href='https://github.com/lqqyt2423/go-mitmproxy' target='_blank' rel="noreferrer"><img style={{ height: '30px' }} src={GitHubLogo} alt="GitHub Logo" /></a>
           </div>
         </div>
 

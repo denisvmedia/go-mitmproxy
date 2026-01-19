@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/lqqyt2423/go-mitmproxy/cert"
+	"github.com/denisvmedia/go-mitmproxy/cert"
 	log "github.com/sirupsen/logrus"
 )
 
