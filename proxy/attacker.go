@@ -9,10 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/denisvmedia/go-mitmproxy/cert"
-	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
+
+	"github.com/denisvmedia/go-mitmproxy/cert"
+	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
 type attackerListener struct {
@@ -27,8 +28,8 @@ func (l *attackerListener) Accept() (net.Conn, error) {
 	c := <-l.connChan
 	return c, nil
 }
-func (l *attackerListener) Close() error   { return nil }
-func (l *attackerListener) Addr() net.Addr { return nil }
+func (*attackerListener) Close() error   { return nil }
+func (*attackerListener) Addr() net.Addr { return nil }
 
 type attackerConn struct {
 	net.Conn
@@ -60,10 +61,10 @@ func newAttacker(proxy *Proxy) (*attacker, error) {
 				DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: proxy.Opts.SslInsecure,
-					KeyLogWriter:       helper.GetTlsKeyLogWriter(),
+					KeyLogWriter:       helper.GetTLSKeyLogWriter(),
 				},
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
@@ -100,18 +101,18 @@ func (a *attacker) start() error {
 	return a.server.Serve(a.listener)
 }
 
-func (a *attacker) serveConn(clientTlsConn *tls.Conn, connCtx *ConnContext) {
-	connCtx.ClientConn.NegotiatedProtocol = clientTlsConn.ConnectionState().NegotiatedProtocol
+func (a *attacker) serveConn(clientTLSConn *tls.Conn, connCtx *ConnContext) {
+	connCtx.ClientConn.NegotiatedProtocol = clientTLSConn.ConnectionState().NegotiatedProtocol
 
 	if connCtx.ClientConn.NegotiatedProtocol == "h2" && connCtx.ServerConn != nil {
 		connCtx.ServerConn.client = &http.Client{
 			Transport: &http2.Transport{
-				DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+				DialTLSContext: func(_ context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
 					return connCtx.ServerConn.tlsConn, nil
 				},
 				DisableCompression: true,
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
@@ -124,7 +125,7 @@ func (a *attacker) serveConn(clientTlsConn *tls.Conn, connCtx *ConnContext) {
 			cancel()
 		}()
 		go func() {
-			a.h2Server.ServeConn(clientTlsConn, &http2.ServeConnOpts{
+			a.h2Server.ServeConn(clientTLSConn, &http2.ServeConnOpts{
 				Context:    ctx,
 				Handler:    a,
 				BaseConfig: a.server,
@@ -134,7 +135,7 @@ func (a *attacker) serveConn(clientTlsConn *tls.Conn, connCtx *ConnContext) {
 	}
 
 	a.listener.accept(&attackerConn{
-		Conn:    clientTlsConn,
+		Conn:    clientTLSConn,
 		connCtx: connCtx,
 	})
 }
@@ -155,8 +156,11 @@ func (a *attacker) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	a.attack(res, req)
 }
 
-func (a *attacker) initHttpDialFn(req *http.Request) {
-	connCtx := req.Context().Value(connContextKey).(*ConnContext)
+func (a *attacker) initHTTPDialFn(req *http.Request) {
+	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	if !ok {
+		panic("failed to get ConnContext from request context")
+	}
 	connCtx.dialFn = func(ctx context.Context) error {
 		addr := helper.CanonicalAddr(req.URL)
 		c, err := a.proxy.getUpstreamConn(ctx, req)
@@ -175,13 +179,13 @@ func (a *attacker) initHttpDialFn(req *http.Request) {
 		serverConn.Address = addr
 		serverConn.client = &http.Client{
 			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 					return cw, nil
 				},
 				ForceAttemptHTTP2:  false, // disable http2
 				DisableCompression: true,  // To get the original response from the server, set Transport.DisableCompression to true.
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
@@ -196,15 +200,15 @@ func (a *attacker) initHttpDialFn(req *http.Request) {
 	}
 }
 
-// send clientHello to server, server handshake
-func (a *attacker) serverTlsHandshake(ctx context.Context, connCtx *ConnContext) error {
+// send clientHello to server, server handshake.
+func (a *attacker) serverTLSHandshake(ctx context.Context, connCtx *ConnContext) error {
 	proxy := a.proxy
 	clientHello := connCtx.ClientConn.clientHello
 	serverConn := connCtx.ServerConn
 
-	serverTlsConfig := &tls.Config{
+	serverTLSConfig := &tls.Config{
 		InsecureSkipVerify: proxy.Opts.SslInsecure,
-		KeyLogWriter:       helper.GetTlsKeyLogWriter(),
+		KeyLogWriter:       helper.GetTLSKeyLogWriter(),
 		ServerName:         clientHello.ServerName,
 		NextProtos:         clientHello.SupportedProtos,
 		// CurvePreferences:   clientHello.SupportedCurves, // todo: will cause errors if enabled
@@ -221,29 +225,29 @@ func (a *attacker) serverTlsHandshake(ctx context.Context, connCtx *ConnContext)
 				maxVersion = version
 			}
 		}
-		serverTlsConfig.MinVersion = minVersion
-		serverTlsConfig.MaxVersion = maxVersion
+		serverTLSConfig.MinVersion = minVersion
+		serverTLSConfig.MaxVersion = maxVersion
 	}
-	serverTlsConn := tls.Client(serverConn.Conn, serverTlsConfig)
-	serverConn.tlsConn = serverTlsConn
-	if err := serverTlsConn.HandshakeContext(ctx); err != nil {
+	serverTLSConn := tls.Client(serverConn.Conn, serverTLSConfig)
+	serverConn.tlsConn = serverTLSConn
+	if err := serverTLSConn.HandshakeContext(ctx); err != nil {
 		return err
 	}
-	serverTlsState := serverTlsConn.ConnectionState()
-	serverConn.tlsState = &serverTlsState
+	serverTLSState := serverTLSConn.ConnectionState()
+	serverConn.tlsState = &serverTLSState
 	for _, addon := range proxy.Addons {
-		addon.TlsEstablishedServer(connCtx)
+		addon.TLSEstablishedServer(connCtx)
 	}
 
 	serverConn.client = &http.Client{
 		Transport: &http.Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return serverTlsConn, nil
+			DialTLSContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return serverTLSConn, nil
 			},
 			ForceAttemptHTTP2:  true,
 			DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
 		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			// Disable automatic redirects
 			return http.ErrUseLastResponse
 		},
@@ -252,15 +256,18 @@ func (a *attacker) serverTlsHandshake(ctx context.Context, connCtx *ConnContext)
 	return nil
 }
 
-func (a *attacker) initHttpsDialFn(req *http.Request) {
-	connCtx := req.Context().Value(connContextKey).(*ConnContext)
+func (a *attacker) initHTTPSDialFn(req *http.Request) {
+	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	if !ok {
+		panic("failed to get ConnContext from request context")
+	}
 
 	connCtx.dialFn = func(ctx context.Context) error {
 		_, err := a.httpsDial(ctx, req)
 		if err != nil {
 			return err
 		}
-		if err := a.serverTlsHandshake(ctx, connCtx); err != nil {
+		if err := a.serverTLSHandshake(ctx, connCtx); err != nil {
 			return err
 		}
 		return nil
@@ -269,7 +276,10 @@ func (a *attacker) initHttpsDialFn(req *http.Request) {
 
 func (a *attacker) httpsDial(ctx context.Context, req *http.Request) (net.Conn, error) {
 	proxy := a.proxy
-	connCtx := req.Context().Value(connContextKey).(*ConnContext)
+	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	if !ok {
+		panic("failed to get ConnContext from request context")
+	}
 
 	plainConn, err := proxy.getUpstreamConn(ctx, req)
 	if err != nil {
@@ -291,21 +301,21 @@ func (a *attacker) httpsDial(ctx context.Context, req *http.Request) (net.Conn, 
 	return serverConn.Conn, nil
 }
 
-func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Conn) {
+func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.attacker.httpsTlsDial",
 		"host": connCtx.ClientConn.Conn.RemoteAddr().String(),
 	})
 
 	var clientHello *tls.ClientHelloInfo
 	clientHelloChan := make(chan *tls.ClientHelloInfo)
-	serverTlsStateChan := make(chan *tls.ConnectionState)
+	serverTLSStateChan := make(chan *tls.ConnectionState)
 	errChan1 := make(chan error, 1)
 	errChan2 := make(chan error, 1)
 	clientHandshakeDoneChan := make(chan struct{})
 
-	clientTlsConn := tls.Server(cconn, &tls.Config{
+	clientTLSConn := tls.Server(cconn, &tls.Config{
 		SessionTicketsDisabled: true, // Set this to true to ensure GetConfigForClient is called every time
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			clientHelloChan <- chi
@@ -315,9 +325,9 @@ func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Co
 			select {
 			case err := <-errChan2:
 				return nil, err
-			case serverTlsState := <-serverTlsStateChan:
-				if serverTlsState.NegotiatedProtocol != "" {
-					nextProtos = append([]string{serverTlsState.NegotiatedProtocol}, nextProtos...)
+			case serverTLSState := <-serverTLSStateChan:
+				if serverTLSState.NegotiatedProtocol != "" {
+					nextProtos = append([]string{serverTLSState.NegotiatedProtocol}, nextProtos...)
 				}
 			}
 
@@ -330,11 +340,10 @@ func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Co
 				Certificates:           []tls.Certificate{*c},
 				NextProtos:             nextProtos,
 			}, nil
-
 		},
 	})
 	go func() {
-		if err := clientTlsConn.HandshakeContext(ctx); err != nil {
+		if err := clientTLSConn.HandshakeContext(ctx); err != nil {
 			errChan1 <- err
 			return
 		}
@@ -352,14 +361,14 @@ func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Co
 	}
 	connCtx.ClientConn.clientHello = clientHello
 
-	if err := a.serverTlsHandshake(ctx, connCtx); err != nil {
+	if err := a.serverTLSHandshake(ctx, connCtx); err != nil {
 		cconn.Close()
 		conn.Close()
 		errChan2 <- err
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
-	serverTlsStateChan <- connCtx.ServerConn.tlsState
+	serverTLSStateChan <- connCtx.ServerConn.tlsState
 
 	// wait client handshake finish
 	select {
@@ -372,17 +381,17 @@ func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Co
 	}
 
 	// will go to attacker.ServeHTTP
-	a.serveConn(clientTlsConn, connCtx)
+	a.serveConn(clientTLSConn, connCtx)
 }
 
 func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *http.Request) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.attacker.httpsLazyAttack",
 		"host": connCtx.ClientConn.Conn.RemoteAddr().String(),
 	})
 
-	clientTlsConn := tls.Server(cconn, &tls.Config{
+	clientTLSConn := tls.Server(cconn, &tls.Config{
 		SessionTicketsDisabled: true, // Set this to true to ensure GetConfigForClient is called every time
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			connCtx.ClientConn.clientHello = chi
@@ -397,124 +406,24 @@ func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *htt
 			}, nil
 		},
 	})
-	if err := clientTlsConn.HandshakeContext(ctx); err != nil {
+	if err := clientTLSConn.HandshakeContext(ctx); err != nil {
 		cconn.Close()
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 
 	// will go to attacker.ServeHTTP
-	a.initHttpsDialFn(req)
-	a.serveConn(clientTlsConn, connCtx)
+	a.initHTTPSDialFn(req)
+	a.serveConn(clientTLSConn, connCtx)
 }
 
-func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
-	proxy := a.proxy
-
-	log := log.WithFields(log.Fields{
-		"in":     "Proxy.attacker.attack",
-		"url":    req.URL,
-		"method": req.Method,
-	})
-
-	reply := func(response *Response, body io.Reader) {
-		if response.Header != nil {
-			for key, value := range response.Header {
-				for _, v := range value {
-					res.Header().Add(key, v)
-				}
-			}
-		}
-		if response.close {
-			res.Header().Add("Connection", "close")
-		}
-		res.WriteHeader(response.StatusCode)
-
-		if body != nil {
-			_, err := io.Copy(res, body)
-			if err != nil {
-				logErr(log, err)
-			}
-		}
-		if response.BodyReader != nil {
-			_, err := io.Copy(res, response.BodyReader)
-			if err != nil {
-				logErr(log, err)
-			}
-		}
-		if response.Body != nil && len(response.Body) > 0 {
-			_, err := res.Write(response.Body)
-			if err != nil {
-				logErr(log, err)
-			}
-		}
-	}
-
-	// when addons panic
-	defer func() {
-		if err := recover(); err != nil {
-			log.Warnf("Recovered: %v\n", err)
-		}
-	}()
-
-	f := newFlow()
-	f.Request = newRequest(req)
-	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
-	defer f.finish()
-
-	f.ConnContext.FlowCount.Add(1)
-
-	rawReqUrlHost := f.Request.URL.Host
-	rawReqUrlScheme := f.Request.URL.Scheme
-
-	// trigger addon event Requestheaders
-	for _, addon := range proxy.Addons {
-		addon.Requestheaders(f)
-		if f.Response != nil {
-			reply(f.Response, nil)
-			return
-		}
-	}
-
-	// Read request body
-	var reqBody io.Reader = req.Body
-	if !f.Stream {
-		reqBuf, r, err := helper.ReaderToBuffer(req.Body, proxy.Opts.StreamLargeBodies)
-		reqBody = r
-		if err != nil {
-			log.Error(err)
-			res.WriteHeader(502)
-			return
-		}
-
-		if reqBuf == nil {
-			log.Warnf("request body size >= %v\n", proxy.Opts.StreamLargeBodies)
-			f.Stream = true
-		} else {
-			f.Request.Body = reqBuf
-
-			// trigger addon event Request
-			for _, addon := range proxy.Addons {
-				addon.Request(f)
-				if f.Response != nil {
-					reply(f.Response, nil)
-					return
-				}
-			}
-			reqBody = bytes.NewReader(f.Request.Body)
-		}
-	}
-
-	for _, addon := range proxy.Addons {
-		reqBody = addon.StreamRequestModifier(f, reqBody)
-	}
-
+func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Reader, rawReqURLHost, rawReqURLScheme string, res http.ResponseWriter, logger *log.Entry) (*http.Response, error) {
 	proxyReqCtx := context.WithValue(req.Context(), proxyReqCtxKey, req)
 	proxyReq, err := http.NewRequestWithContext(proxyReqCtx, f.Request.Method, f.Request.URL.String(), reqBody)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		res.WriteHeader(502)
-		return
+		return nil, err
 	}
 
 	for key, value := range f.Request.Header {
@@ -525,7 +434,7 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 
 	useSeparateClient := f.UseSeparateClient
 	if !useSeparateClient {
-		if rawReqUrlHost != f.Request.URL.Host || rawReqUrlScheme != f.Request.URL.Scheme {
+		if rawReqURLHost != f.Request.URL.Host || rawReqURLScheme != f.Request.URL.Scheme {
 			useSeparateClient = true
 		}
 	}
@@ -533,24 +442,204 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	var proxyRes *http.Response
 	if useSeparateClient {
 		proxyRes, err = a.client.Do(proxyReq)
-	} else {
-		if f.ConnContext.ServerConn == nil && f.ConnContext.dialFn != nil {
-			if err := f.ConnContext.dialFn(req.Context()); err != nil {
-				// Check for authentication failure
-				log.Error(err)
-				if strings.Contains(err.Error(), "Proxy Authentication Required") {
-					httpError(res, "", http.StatusProxyAuthRequired)
-					return
-				}
-				res.WriteHeader(502)
-				return
+		if err != nil {
+			logErr(logger, err)
+			res.WriteHeader(502)
+			return nil, err
+		}
+		return proxyRes, nil
+	}
+
+	// Establish connection if needed
+	if f.ConnContext.ServerConn == nil && f.ConnContext.dialFn != nil {
+		if err := f.ConnContext.dialFn(req.Context()); err != nil {
+			// Check for authentication failure
+			logger.Error(err)
+			if strings.Contains(err.Error(), "Proxy Authentication Required") {
+				httpError(res, "", http.StatusProxyAuthRequired)
+				return nil, err
+			}
+			res.WriteHeader(502)
+			return nil, err
+		}
+	}
+
+	proxyRes, err = f.ConnContext.ServerConn.client.Do(proxyReq)
+	if err != nil {
+		logErr(logger, err)
+		res.WriteHeader(502)
+		return nil, err
+	}
+
+	return proxyRes, nil
+}
+
+func (*attacker) handleResponseHeadersAddons(f *Flow, proxy *Proxy) bool {
+	for _, addon := range proxy.Addons {
+		addon.Responseheaders(f)
+		if f.Response.Body != nil {
+			return true // early response
+		}
+	}
+	return false
+}
+
+func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy, logger *log.Entry) (io.Reader, bool) {
+	var resBody io.Reader = proxyRes.Body
+	if f.Stream {
+		return resBody, true
+	}
+
+	resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, proxy.Opts.StreamLargeBodies)
+	resBody = r
+	if err != nil {
+		logger.Error(err)
+		return nil, false
+	}
+
+	if resBuf == nil {
+		logger.Warnf("response body size >= %v\n", proxy.Opts.StreamLargeBodies)
+		f.Stream = true
+		return resBody, true
+	}
+
+	f.Response.Body = resBuf
+
+	// trigger addon event Response
+	for _, addon := range proxy.Addons {
+		addon.Response(f)
+	}
+
+	return resBody, true
+}
+
+func (*attacker) replyToClient(res http.ResponseWriter, response *Response, body io.Reader, logger *log.Entry) {
+	if response.Header != nil {
+		for key, value := range response.Header {
+			for _, v := range value {
+				res.Header().Add(key, v)
 			}
 		}
-		proxyRes, err = f.ConnContext.ServerConn.client.Do(proxyReq)
 	}
+	if response.close {
+		res.Header().Add("Connection", "close")
+	}
+	res.WriteHeader(response.StatusCode)
+
+	if body != nil {
+		_, err := io.Copy(res, body)
+		if err != nil {
+			logErr(logger, err)
+		}
+	}
+	if response.BodyReader != nil {
+		_, err := io.Copy(res, response.BodyReader)
+		if err != nil {
+			logErr(logger, err)
+		}
+	}
+	if len(response.Body) > 0 {
+		_, err := res.Write(response.Body)
+		if err != nil {
+			logErr(logger, err)
+		}
+	}
+}
+
+func (*attacker) handleRequestAddons(f *Flow, proxy *Proxy) bool {
+	for _, addon := range proxy.Addons {
+		addon.Requestheaders(f)
+		if f.Response != nil {
+			return true // early response
+		}
+	}
+	return false
+}
+
+func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logger *log.Entry) (io.Reader, bool) {
+	var reqBody io.Reader = req.Body
+	if f.Stream {
+		return reqBody, true
+	}
+
+	reqBuf, r, err := helper.ReaderToBuffer(req.Body, proxy.Opts.StreamLargeBodies)
+	reqBody = r
 	if err != nil {
-		logErr(log, err)
+		logger.Error(err)
+		return nil, false
+	}
+
+	if reqBuf == nil {
+		logger.Warnf("request body size >= %v\n", proxy.Opts.StreamLargeBodies)
+		f.Stream = true
+		return reqBody, true
+	}
+
+	f.Request.Body = reqBuf
+
+	// trigger addon event Request
+	for _, addon := range proxy.Addons {
+		addon.Request(f)
+		if f.Response != nil {
+			return nil, true // early response
+		}
+	}
+	return bytes.NewReader(f.Request.Body), true
+}
+
+func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
+	proxy := a.proxy
+
+	logger := log.WithFields(log.Fields{
+		"in":     "Proxy.attacker.attack",
+		"url":    req.URL,
+		"method": req.Method,
+	})
+
+	// when addons panic
+	defer func() {
+		if err := recover(); err != nil {
+			logger.Warnf("Recovered: %v\n", err)
+		}
+	}()
+
+	f := newFlow()
+	f.Request = newRequest(req)
+	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	if !ok {
+		panic("failed to get ConnContext from request context")
+	}
+	f.ConnContext = connCtx
+	defer f.finish()
+
+	f.ConnContext.FlowCount.Add(1)
+
+	rawReqURLHost := f.Request.URL.Host
+	rawReqURLScheme := f.Request.URL.Scheme
+
+	// trigger addon event Requestheaders
+	if a.handleRequestAddons(f, proxy) {
+		a.replyToClient(res, f.Response, nil, logger)
+		return
+	}
+
+	// Read request body
+	reqBody, ok := a.readRequestBody(f, req, proxy, logger)
+	if !ok {
 		res.WriteHeader(502)
+		return
+	}
+	if f.Response != nil {
+		a.replyToClient(res, f.Response, nil, logger)
+		return
+	}
+
+	for _, addon := range proxy.Addons {
+		reqBody = addon.StreamRequestModifier(f, reqBody)
+	}
+
+	proxyRes, err := a.executeProxyRequest(f, req, reqBody, rawReqURLHost, rawReqURLScheme, res, logger)
+	if err != nil {
 		return
 	}
 
@@ -567,39 +656,21 @@ func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// trigger addon event Responseheaders
-	for _, addon := range proxy.Addons {
-		addon.Responseheaders(f)
-		if f.Response.Body != nil {
-			reply(f.Response, nil)
-			return
-		}
+	if a.handleResponseHeadersAddons(f, proxy) {
+		a.replyToClient(res, f.Response, nil, logger)
+		return
 	}
 
 	// Read response body
-	var resBody io.Reader = proxyRes.Body
-	if !f.Stream {
-		resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, proxy.Opts.StreamLargeBodies)
-		resBody = r
-		if err != nil {
-			log.Error(err)
-			res.WriteHeader(502)
-			return
-		}
-		if resBuf == nil {
-			log.Warnf("response body size >= %v\n", proxy.Opts.StreamLargeBodies)
-			f.Stream = true
-		} else {
-			f.Response.Body = resBuf
-
-			// trigger addon event Response
-			for _, addon := range proxy.Addons {
-				addon.Response(f)
-			}
-		}
+	resBody, ok := a.readResponseBody(f, proxyRes, proxy, logger)
+	if !ok {
+		res.WriteHeader(502)
+		return
 	}
+
 	for _, addon := range proxy.Addons {
 		resBody = addon.StreamResponseModifier(f, resBody)
 	}
 
-	reply(f.Response, resBody)
+	a.replyToClient(res, f.Response, resBody, logger)
 }

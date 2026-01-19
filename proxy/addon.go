@@ -22,7 +22,7 @@ type Addon interface {
 	ServerDisconnected(*ConnContext)
 
 	// The TLS handshake with the server has been completed successfully.
-	TlsEstablishedServer(*ConnContext)
+	TLSEstablishedServer(*ConnContext)
 
 	// HTTP request headers were successfully read. At this point, the body is empty.
 	Requestheaders(*Flow)
@@ -46,57 +46,57 @@ type Addon interface {
 	AccessProxyServer(req *http.Request, res http.ResponseWriter)
 }
 
-// BaseAddon do nothing
+// BaseAddon do nothing.
 type BaseAddon struct{}
 
-func (addon *BaseAddon) ClientConnected(*ClientConn)                                  {}
-func (addon *BaseAddon) ClientDisconnected(*ClientConn)                               {}
-func (addon *BaseAddon) ServerConnected(*ConnContext)                                 {}
-func (addon *BaseAddon) ServerDisconnected(*ConnContext)                              {}
-func (addon *BaseAddon) TlsEstablishedServer(*ConnContext)                            {}
-func (addon *BaseAddon) Requestheaders(*Flow)                                         {}
-func (addon *BaseAddon) Request(*Flow)                                                {}
-func (addon *BaseAddon) Responseheaders(*Flow)                                        {}
-func (addon *BaseAddon) Response(*Flow)                                               {}
-func (addon *BaseAddon) StreamRequestModifier(f *Flow, in io.Reader) io.Reader        { return in }
-func (addon *BaseAddon) StreamResponseModifier(f *Flow, in io.Reader) io.Reader       { return in }
-func (addon *BaseAddon) AccessProxyServer(req *http.Request, res http.ResponseWriter) {}
+func (*BaseAddon) ClientConnected(*ClientConn)                              {}
+func (*BaseAddon) ClientDisconnected(*ClientConn)                           {}
+func (*BaseAddon) ServerConnected(*ConnContext)                             {}
+func (*BaseAddon) ServerDisconnected(*ConnContext)                          {}
+func (*BaseAddon) TLSEstablishedServer(*ConnContext)                        {}
+func (*BaseAddon) Requestheaders(*Flow)                                     {}
+func (*BaseAddon) Request(*Flow)                                            {}
+func (*BaseAddon) Responseheaders(*Flow)                                    {}
+func (*BaseAddon) Response(*Flow)                                           {}
+func (*BaseAddon) StreamRequestModifier(_ *Flow, in io.Reader) io.Reader    { return in }
+func (*BaseAddon) StreamResponseModifier(_ *Flow, in io.Reader) io.Reader   { return in }
+func (*BaseAddon) AccessProxyServer(_ *http.Request, _ http.ResponseWriter) {}
 
-// LogAddon log connection and flow
+// LogAddon log connection and flow.
 type LogAddon struct {
 	BaseAddon
 }
 
-func (addon *LogAddon) ClientConnected(client *ClientConn) {
+func (*LogAddon) ClientConnected(client *ClientConn) {
 	log.Infof("%v client connect\n", client.Conn.RemoteAddr())
 }
 
-func (addon *LogAddon) ClientDisconnected(client *ClientConn) {
+func (*LogAddon) ClientDisconnected(client *ClientConn) {
 	log.Infof("%v client disconnect\n", client.Conn.RemoteAddr())
 }
 
-func (addon *LogAddon) ServerConnected(connCtx *ConnContext) {
+func (*LogAddon) ServerConnected(connCtx *ConnContext) {
 	log.Infof("%v server connect %v (%v->%v)\n", connCtx.ClientConn.Conn.RemoteAddr(), connCtx.ServerConn.Address, connCtx.ServerConn.Conn.LocalAddr(), connCtx.ServerConn.Conn.RemoteAddr())
 }
 
-func (addon *LogAddon) ServerDisconnected(connCtx *ConnContext) {
+func (*LogAddon) ServerDisconnected(connCtx *ConnContext) {
 	log.Infof("%v server disconnect %v (%v->%v) - %v\n", connCtx.ClientConn.Conn.RemoteAddr(), connCtx.ServerConn.Address, connCtx.ServerConn.Conn.LocalAddr(), connCtx.ServerConn.Conn.RemoteAddr(), connCtx.FlowCount.Load())
 }
 
-func (addon *LogAddon) Requestheaders(f *Flow) {
+func (*LogAddon) Requestheaders(f *Flow) {
 	log.Debugf("%v Requestheaders %v %v\n", f.ConnContext.ClientConn.Conn.RemoteAddr(), f.Request.Method, f.Request.URL.String())
 	start := time.Now()
 	go func() {
 		<-f.Done()
-		var StatusCode int
+		var statusCode int
 		if f.Response != nil {
-			StatusCode = f.Response.StatusCode
+			statusCode = f.Response.StatusCode
 		}
 		var contentLen int
 		if f.Response != nil && f.Response.Body != nil {
 			contentLen = len(f.Response.Body)
 		}
-		log.Infof("%v %v %v %v %v - %v ms\n", f.ConnContext.ClientConn.Conn.RemoteAddr(), f.Request.Method, f.Request.URL.String(), StatusCode, contentLen, time.Since(start).Milliseconds())
+		log.Infof("%v %v %v %v %v - %v ms\n", f.ConnContext.ClientConn.Conn.RemoteAddr(), f.Request.Method, f.Request.URL.String(), statusCode, contentLen, time.Since(start).Milliseconds())
 	}()
 }
 
@@ -109,6 +109,6 @@ func NewUpstreamCertAddon(upstreamCert bool) *UpstreamCertAddon {
 	return &UpstreamCertAddon{UpstreamCert: upstreamCert}
 }
 
-func (addon *UpstreamCertAddon) ClientConnected(conn *ClientConn) {
-	conn.UpstreamCert = addon.UpstreamCert
+func (adn *UpstreamCertAddon) ClientConnected(conn *ClientConn) {
+	conn.UpstreamCert = adn.UpstreamCert
 }

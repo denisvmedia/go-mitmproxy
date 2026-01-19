@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -54,43 +55,43 @@ type testProxyHelper struct {
 	getProxyClient         func() *http.Client
 }
 
-func (helper *testProxyHelper) init(t *testing.T) {
+func (hlp *testProxyHelper) init(t *testing.T) {
 	t.Helper()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
-	helper.server.Handler = mux
+	hlp.server.Handler = mux
 
 	// start http server
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	handleError(t, err)
-	helper.ln = ln
+	hlp.ln = ln
 
 	// start https server
 	tlsPlainLn, err := net.Listen("tcp", "127.0.0.1:0")
 	handleError(t, err)
-	helper.tlsPlainLn = tlsPlainLn
+	hlp.tlsPlainLn = tlsPlainLn
 	ca, err := cert.NewSelfSignCAMemory()
 	handleError(t, err)
-	cert, err := ca.GetCert("localhost")
+	tlsCert, err := ca.GetCert("localhost")
 	handleError(t, err)
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{*cert},
+		Certificates: []tls.Certificate{*tlsCert},
 	}
-	helper.server.TLSConfig = tlsConfig
-	helper.tlsLn = tls.NewListener(tlsPlainLn, tlsConfig)
+	hlp.server.TLSConfig = tlsConfig
+	hlp.tlsLn = tls.NewListener(tlsPlainLn, tlsConfig)
 
 	httpEndpoint := "http://" + ln.Addr().String() + "/"
 	httpsPort := tlsPlainLn.Addr().(*net.TCPAddr).Port
 	httpsEndpoint := "https://localhost:" + strconv.Itoa(httpsPort) + "/"
-	helper.httpEndpoint = httpEndpoint
-	helper.httpsEndpoint = httpsEndpoint
+	hlp.httpEndpoint = httpEndpoint
+	hlp.httpsEndpoint = httpsEndpoint
 
 	// start proxy
 	testProxy, err := NewProxy(&Options{
-		Addr:        helper.proxyAddr, // some random port
+		Addr:        hlp.proxyAddr, // some random port
 		SslInsecure: true,
 	})
 	handleError(t, err)
@@ -99,8 +100,8 @@ func (helper *testProxyHelper) init(t *testing.T) {
 		orders: make([]string, 0),
 	}
 	testProxy.AddAddon(testOrderAddonInstance)
-	helper.testOrderAddonInstance = testOrderAddonInstance
-	helper.testProxy = testProxy
+	hlp.testOrderAddonInstance = testOrderAddonInstance
+	hlp.testProxy = testProxy
 
 	getProxyClient := func() *http.Client {
 		return &http.Client{
@@ -109,20 +110,20 @@ func (helper *testProxyHelper) init(t *testing.T) {
 					InsecureSkipVerify: true,
 				},
 				Proxy: func(r *http.Request) (*url.URL, error) {
-					return url.Parse("http://127.0.0.1" + helper.proxyAddr)
+					return url.Parse("http://127.0.0.1" + hlp.proxyAddr)
 				},
 			},
 		}
 	}
-	helper.getProxyClient = getProxyClient
+	hlp.getProxyClient = getProxyClient
 }
 
-// addon for test intercept
+// addon for test intercept.
 type interceptAddon struct {
 	BaseAddon
 }
 
-func (addon *interceptAddon) Request(f *Flow) {
+func (*interceptAddon) Request(f *Flow) {
 	// intercept request, should not send request to real endpoint
 	if f.Request.URL.Path == "/intercept-request" {
 		f.Response = &Response{
@@ -132,7 +133,7 @@ func (addon *interceptAddon) Request(f *Flow) {
 	}
 }
 
-func (addon *interceptAddon) Response(f *Flow) {
+func (*interceptAddon) Response(f *Flow) {
 	if f.Request.URL.Path == "/intercept-response" {
 		f.Response = &Response{
 			StatusCode: 200,
@@ -141,24 +142,24 @@ func (addon *interceptAddon) Response(f *Flow) {
 	}
 }
 
-// addon for test functions' execute order
+// addon for test functions' execute order.
 type testOrderAddon struct {
 	BaseAddon
 	orders []string
 	mu     sync.Mutex
 }
 
-func (addon *testOrderAddon) reset() {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = make([]string, 0)
+func (adn *testOrderAddon) reset() {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = make([]string, 0)
 }
 
-func (addon *testOrderAddon) contains(t *testing.T, name string) {
+func (adn *testOrderAddon) contains(t *testing.T, name string) {
 	t.Helper()
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	for _, n := range addon.orders {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	for _, n := range adn.orders {
 		if name == n {
 			return
 		}
@@ -166,12 +167,12 @@ func (addon *testOrderAddon) contains(t *testing.T, name string) {
 	t.Fatalf("expected contains %s, but not", name)
 }
 
-func (addon *testOrderAddon) before(t *testing.T, a, b string) {
+func (adn *testOrderAddon) before(t *testing.T, a, b string) {
 	t.Helper()
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
 	aIndex, bIndex := -1, -1
-	for i, n := range addon.orders {
+	for i, n := range adn.orders {
 		if a == n {
 			aIndex = i
 		} else if b == n {
@@ -189,61 +190,61 @@ func (addon *testOrderAddon) before(t *testing.T, a, b string) {
 	}
 }
 
-func (addon *testOrderAddon) ClientConnected(*ClientConn) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "ClientConnected")
+func (adn *testOrderAddon) ClientConnected(*ClientConn) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "ClientConnected")
 }
-func (addon *testOrderAddon) ClientDisconnected(*ClientConn) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "ClientDisconnected")
+func (adn *testOrderAddon) ClientDisconnected(*ClientConn) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "ClientDisconnected")
 }
-func (addon *testOrderAddon) ServerConnected(*ConnContext) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "ServerConnected")
+func (adn *testOrderAddon) ServerConnected(*ConnContext) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "ServerConnected")
 }
-func (addon *testOrderAddon) ServerDisconnected(*ConnContext) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "ServerDisconnected")
+func (adn *testOrderAddon) ServerDisconnected(*ConnContext) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "ServerDisconnected")
 }
-func (addon *testOrderAddon) TlsEstablishedServer(*ConnContext) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "TlsEstablishedServer")
+func (adn *testOrderAddon) TLSEstablishedServer(*ConnContext) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "TLSEstablishedServer")
 }
-func (addon *testOrderAddon) Requestheaders(*Flow) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "Requestheaders")
+func (adn *testOrderAddon) Requestheaders(*Flow) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "Requestheaders")
 }
-func (addon *testOrderAddon) Request(*Flow) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "Request")
+func (adn *testOrderAddon) Request(*Flow) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "Request")
 }
-func (addon *testOrderAddon) Responseheaders(*Flow) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "Responseheaders")
+func (adn *testOrderAddon) Responseheaders(*Flow) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "Responseheaders")
 }
-func (addon *testOrderAddon) Response(*Flow) {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "Response")
+func (adn *testOrderAddon) Response(*Flow) {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "Response")
 }
-func (addon *testOrderAddon) StreamRequestModifier(f *Flow, in io.Reader) io.Reader {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "StreamRequestModifier")
+func (adn *testOrderAddon) StreamRequestModifier(f *Flow, in io.Reader) io.Reader {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "StreamRequestModifier")
 	return in
 }
-func (addon *testOrderAddon) StreamResponseModifier(f *Flow, in io.Reader) io.Reader {
-	addon.mu.Lock()
-	defer addon.mu.Unlock()
-	addon.orders = append(addon.orders, "StreamResponseModifier")
+func (adn *testOrderAddon) StreamResponseModifier(f *Flow, in io.Reader) io.Reader {
+	adn.mu.Lock()
+	defer adn.mu.Unlock()
+	adn.orders = append(adn.orders, "StreamResponseModifier")
 	return in
 }
 
@@ -259,10 +260,10 @@ func TestProxy(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
-	go testProxy.Start()
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	t.Run("test http server", func(t *testing.T) {
@@ -437,10 +438,10 @@ func TestProxyWhenServerNotKeepAlive(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
-	go testProxy.Start()
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	t.Run("should not have eof error when server side DisableKeepAlives", func(t *testing.T) {
@@ -496,10 +497,10 @@ func TestProxyWhenServerKeepAliveButCloseImmediately(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
-	go testProxy.Start()
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	t.Run("should not have eof error when server close connection immediately", func(t *testing.T) {
@@ -564,9 +565,9 @@ func TestProxyClose(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
 
 	errCh := make(chan error)
 	go func() {
@@ -586,7 +587,7 @@ func TestProxyClose(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if err != http.ErrServerClosed {
+		if !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("expected ErrServerClosed error, but got %v", err)
 		}
 	case <-time.After(time.Millisecond * 10):
@@ -605,9 +606,9 @@ func TestProxyShutdown(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
 
 	errCh := make(chan error)
 	go func() {
@@ -627,7 +628,7 @@ func TestProxyShutdown(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if err != http.ErrServerClosed {
+		if !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("expected ErrServerClosed error, but got %v", err)
 		}
 	case <-time.After(time.Millisecond * 10):
@@ -647,10 +648,10 @@ func TestOnUpstreamCert(t *testing.T) {
 	testProxy := helper.testProxy
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
-	go testProxy.Start()
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	proxyClient := getProxyClient()
@@ -669,9 +670,8 @@ func TestOnUpstreamCert(t *testing.T) {
 		testSendRequest(t, httpsEndpoint, proxyClient, "ok")
 		time.Sleep(time.Millisecond * 10)
 		testOrderAddonInstance.before(t, "ServerConnected", "Requestheaders")
-		testOrderAddonInstance.contains(t, "TlsEstablishedServer")
+		testOrderAddonInstance.contains(t, "TLSEstablishedServer")
 	})
-
 }
 
 func TestOffUpstreamCert(t *testing.T) {
@@ -687,10 +687,10 @@ func TestOffUpstreamCert(t *testing.T) {
 	testProxy.AddAddon(NewUpstreamCertAddon(false))
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.Serve(helper.tlsLn)
-	go testProxy.Start()
+	go func() { _ = helper.server.Serve(helper.tlsLn) }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	proxyClient := getProxyClient()
@@ -709,6 +709,6 @@ func TestOffUpstreamCert(t *testing.T) {
 		testSendRequest(t, httpsEndpoint, proxyClient, "ok")
 		time.Sleep(time.Millisecond * 10)
 		testOrderAddonInstance.before(t, "Requestheaders", "ServerConnected")
-		testOrderAddonInstance.contains(t, "TlsEstablishedServer")
+		testOrderAddonInstance.contains(t, "TLSEstablishedServer")
 	})
 }

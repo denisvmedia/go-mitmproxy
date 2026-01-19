@@ -7,9 +7,10 @@ import (
 	"path"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
-	log "github.com/sirupsen/logrus"
 )
 
 type mapLocalTo struct {
@@ -22,14 +23,14 @@ type mapLocalItem struct {
 	Enable bool
 }
 
-func (item *mapLocalItem) match(req *proxy.Request) bool {
-	if !item.Enable {
+func (itm *mapLocalItem) match(req *proxy.Request) bool {
+	if !itm.Enable {
 		return false
 	}
-	return item.From.match(req)
+	return itm.From.match(req)
 }
 
-func (item *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response) {
+func (itm *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response) {
 	getStat := func(filepath string) (fs.FileInfo, *proxy.Response) {
 		stat, err := os.Stat(filepath)
 		if err != nil {
@@ -60,21 +61,21 @@ func (item *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response)
 		}
 	}
 
-	stat, resp := getStat(item.To.Path)
+	stat, resp := getStat(itm.To.Path)
 	if resp != nil {
-		return item.To.Path, resp
+		return itm.To.Path, resp
 	}
 
 	if !stat.IsDir() {
-		return item.To.Path, respFile(item.To.Path)
+		return itm.To.Path, respFile(itm.To.Path)
 	}
 
 	// is dir
 	subPath := req.URL.Path
-	if item.From.Path != "" && strings.HasSuffix(item.From.Path, "/*") {
-		subPath = req.URL.Path[len(item.From.Path)-2:]
+	if itm.From.Path != "" && strings.HasSuffix(itm.From.Path, "/*") {
+		subPath = req.URL.Path[len(itm.From.Path)-2:]
 	}
-	filepath := path.Join(item.To.Path, subPath)
+	filepath := path.Join(itm.To.Path, subPath)
 
 	stat, resp = getStat(filepath)
 	if resp != nil {
@@ -83,11 +84,10 @@ func (item *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response)
 
 	if !stat.IsDir() {
 		return filepath, respFile(filepath)
-	} else {
-		log.Errorf("map local %v should be file", filepath)
-		return filepath, &proxy.Response{
-			StatusCode: 500,
-		}
+	}
+	log.Errorf("map local %v should be file", filepath)
+	return filepath, &proxy.Response{
+		StatusCode: 500,
 	}
 }
 

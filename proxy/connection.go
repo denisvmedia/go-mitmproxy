@@ -11,11 +11,11 @@ import (
 	"go.uber.org/atomic"
 )
 
-// client connection
+// client connection.
 type ClientConn struct {
-	Id                 uuid.UUID
+	ID                 uuid.UUID
 	Conn               net.Conn
-	Tls                bool
+	TLS                bool
 	NegotiatedProtocol string
 	UpstreamCert       bool // Connect to upstream server to look up certificate details. Default: True
 	clientHello        *tls.ClientHelloInfo
@@ -23,24 +23,24 @@ type ClientConn struct {
 
 func newClientConn(c net.Conn) *ClientConn {
 	return &ClientConn{
-		Id:           uuid.NewV4(),
+		ID:           uuid.NewV4(),
 		Conn:         c,
-		Tls:          false,
+		TLS:          false,
 		UpstreamCert: true,
 	}
 }
 
 func (c *ClientConn) MarshalJSON() ([]byte, error) {
-	m := make(map[string]interface{})
-	m["id"] = c.Id
-	m["tls"] = c.Tls
+	m := make(map[string]any)
+	m["id"] = c.ID
+	m["tls"] = c.TLS
 	m["address"] = c.Conn.RemoteAddr().String()
 	return json.Marshal(m)
 }
 
-// server connection
+// server connection.
 type ServerConn struct {
-	Id      uuid.UUID
+	ID      uuid.UUID
 	Address string
 	Conn    net.Conn
 
@@ -51,13 +51,13 @@ type ServerConn struct {
 
 func newServerConn() *ServerConn {
 	return &ServerConn{
-		Id: uuid.NewV4(),
+		ID: uuid.NewV4(),
 	}
 }
 
 func (c *ServerConn) MarshalJSON() ([]byte, error) {
-	m := make(map[string]interface{})
-	m["id"] = c.Id
+	m := make(map[string]any)
+	m["id"] = c.ID
 	m["address"] = c.Address
 	peername := ""
 	if c.Conn != nil {
@@ -67,14 +67,14 @@ func (c *ServerConn) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (c *ServerConn) TlsState() *tls.ConnectionState {
+func (c *ServerConn) TLSState() *tls.ConnectionState {
 	return c.tlsState
 }
 
-// connection context ctx key
+// connection context ctx key.
 var connContextKey = new(struct{})
 
-// connection context
+// connection context.
 type ConnContext struct {
 	ClientConn *ClientConn   `json:"clientConn"`
 	ServerConn *ServerConn   `json:"serverConn"`
@@ -94,6 +94,6 @@ func newConnContext(c net.Conn, proxy *Proxy) *ConnContext {
 	}
 }
 
-func (connCtx *ConnContext) Id() uuid.UUID {
-	return connCtx.ClientConn.Id
+func (cc *ConnContext) ID() uuid.UUID {
+	return cc.ClientConn.ID
 }

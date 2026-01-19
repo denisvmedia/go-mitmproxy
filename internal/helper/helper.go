@@ -12,7 +12,7 @@ import (
 
 // Try to read Reader into buffer
 // If the limit is not reached, successfully read into buffer
-// Otherwise buffer returns nil, and a new Reader is returned with state before reading
+// Otherwise buffer returns nil, and a new Reader is returned with state before reading.
 func ReaderToBuffer(r io.Reader, limit int64) ([]byte, io.Reader, error) {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	lr := io.LimitReader(r, limit)
@@ -32,7 +32,7 @@ func ReaderToBuffer(r io.Reader, limit int64) ([]byte, io.Reader, error) {
 	return buf.Bytes(), nil, nil
 }
 
-func NewStructFromFile(filename string, v interface{}) error {
+func NewStructFromFile(filename string, v any) error {
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -50,21 +50,20 @@ var portMap = map[string]string{
 }
 
 // CanonicalAddr returns url.Host but always with a ":port" suffix.
-func CanonicalAddr(url *url.URL) string {
-	port := url.Port()
+func CanonicalAddr(u *url.URL) string {
+	port := u.Port()
 	if port == "" {
-		port = portMap[url.Scheme]
+		port = portMap[u.Scheme]
 	}
-	return net.JoinHostPort(url.Hostname(), port)
+	return net.JoinHostPort(u.Hostname(), port)
 }
 
 // https://github.com/mitmproxy/mitmproxy/blob/main/mitmproxy/net/tls.py is_tls_record_magic
-func IsTls(buf []byte) bool {
+func IsTLS(buf []byte) bool {
 	if buf[0] == 0x16 && buf[1] == 0x03 && buf[2] <= 0x03 {
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 type ResponseCheck struct {
@@ -83,7 +82,7 @@ func (r *ResponseCheck) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 }
 
-func (r *ResponseCheck) Write(bytes []byte) (int, error) {
+func (r *ResponseCheck) Write(b []byte) (int, error) {
 	r.Wrote = true
-	return r.ResponseWriter.Write(bytes)
+	return r.ResponseWriter.Write(b)
 }

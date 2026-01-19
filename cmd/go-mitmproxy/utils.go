@@ -3,16 +3,17 @@ package main
 import (
 	"encoding/base64"
 	"errors"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type DefaultBasicAuth struct {
 	Auth map[string]string
 }
 
-// Create a new BasicAuth instance from a user:password string
+// Create a new BasicAuth instance from a user:password string.
 func NewDefaultBasicAuth(auth string) *DefaultBasicAuth {
 	basicAuth := &DefaultBasicAuth{
 		Auth: make(map[string]string),
@@ -20,28 +21,28 @@ func NewDefaultBasicAuth(auth string) *DefaultBasicAuth {
 	for _, e := range strings.Split(auth, "|") {
 		n := strings.SplitN(e, ":", 2)
 		if len(n) != 2 {
-			log.Fatalf("Invalid proxy auth format: %s, expected user:pass", e)
+			log.Fatalf("Invalid proxy auth format: %s, expected user:pass", e) //revive:disable-line:deep-exit -- ok for cmd/*
 		}
 		basicAuth.Auth[n[0]] = n[1]
 	}
 	return basicAuth
 }
 
-// Validate proxy authentication
-func (auth *DefaultBasicAuth) EntryAuth(res http.ResponseWriter, req *http.Request) (bool, error) {
+// Validate proxy authentication.
+func (usr *DefaultBasicAuth) EntryAuth(_ http.ResponseWriter, req *http.Request) (bool, error) {
 	get := req.Header.Get("Proxy-Authorization")
 	if get == "" {
 		return false, errors.New("missing authentication")
 	}
-	ret := auth.parseRequestAuth(get)
+	ret := usr.parseRequestAuth(get)
 	if !ret {
 		return false, errors.New("invalid credentials")
 	}
 	return true, nil
 }
 
-// Parse and verify the Proxy-Authorization header
-func (user *DefaultBasicAuth) parseRequestAuth(proxyAuth string) bool {
+// Parse and verify the Proxy-Authorization header.
+func (usr *DefaultBasicAuth) parseRequestAuth(proxyAuth string) bool {
 	if !strings.HasPrefix(proxyAuth, "Basic ") {
 		return false
 	}
@@ -56,7 +57,7 @@ func (user *DefaultBasicAuth) parseRequestAuth(proxyAuth string) bool {
 	if len(n) < 2 {
 		return false
 	}
-	if s, ok := user.Auth[n[0]]; !ok || s != n[1] {
+	if s, ok := usr.Auth[n[0]]; !ok || s != n[1] {
 		return false
 	}
 	return true

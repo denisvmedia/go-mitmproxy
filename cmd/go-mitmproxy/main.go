@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
-	rawLog "log"
+	stdlog "log"
 	"net/http"
 	"os"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/addon"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 	"github.com/denisvmedia/go-mitmproxy/web"
-	log "github.com/sirupsen/logrus"
 )
 
 type Config struct {
@@ -42,7 +43,7 @@ func main() {
 	config := loadConfig()
 
 	if config.Debug > 0 {
-		rawLog.SetFlags(rawLog.LstdFlags | rawLog.Lshortfile)
+		stdlog.SetFlags(stdlog.LstdFlags | stdlog.Lshortfile)
 		log.SetLevel(log.DebugLevel)
 	} else {
 		log.SetLevel(log.InfoLevel)

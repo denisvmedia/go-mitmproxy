@@ -86,7 +86,8 @@ func (r *Response) ReplaceToDecodedBody() {
 }
 
 func decode(enc string, body []byte) ([]byte, error) {
-	if enc == "gzip" {
+	switch enc {
+	case "gzip":
 		dreader, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, err
@@ -101,7 +102,7 @@ func decode(enc string, body []byte) ([]byte, error) {
 			return nil, err
 		}
 		return buf.Bytes(), nil
-	} else if enc == "br" {
+	case "br":
 		dreader := brotli.NewReader(bytes.NewReader(body))
 		buf := bytes.NewBuffer(make([]byte, 0))
 		_, err := io.Copy(buf, dreader)
@@ -109,7 +110,7 @@ func decode(enc string, body []byte) ([]byte, error) {
 			return nil, err
 		}
 		return buf.Bytes(), nil
-	} else if enc == "deflate" {
+	case "deflate":
 		dreader := flate.NewReader(bytes.NewReader(body))
 		buf := bytes.NewBuffer(make([]byte, 0))
 		_, err := io.Copy(buf, dreader)
@@ -117,7 +118,7 @@ func decode(enc string, body []byte) ([]byte, error) {
 			return nil, err
 		}
 		return buf.Bytes(), nil
-	} else if enc == "zstd" {
+	case "zstd":
 		dreader, err := zstd.NewReader(bytes.NewReader(body))
 		if err != nil {
 			return nil, err

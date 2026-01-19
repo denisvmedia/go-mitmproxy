@@ -5,11 +5,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/denisvmedia/go-mitmproxy/internal/helper"
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	"github.com/samber/lo"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/match"
+
+	"github.com/denisvmedia/go-mitmproxy/internal/helper"
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 // Path map rule:
@@ -54,26 +55,26 @@ type mapRemoteItem struct {
 	Enable bool
 }
 
-func (item *mapRemoteItem) match(req *proxy.Request) bool {
-	if !item.Enable {
+func (itm *mapRemoteItem) match(req *proxy.Request) bool {
+	if !itm.Enable {
 		return false
 	}
-	return item.From.match(req)
+	return itm.From.match(req)
 }
 
-func (item *mapRemoteItem) replace(req *proxy.Request) *proxy.Request {
-	if item.To.Protocol != "" {
-		req.URL.Scheme = item.To.Protocol
+func (itm *mapRemoteItem) replace(req *proxy.Request) *proxy.Request {
+	if itm.To.Protocol != "" {
+		req.URL.Scheme = itm.To.Protocol
 	}
-	if item.To.Host != "" {
-		req.URL.Host = item.To.Host
+	if itm.To.Host != "" {
+		req.URL.Host = itm.To.Host
 	}
-	if item.To.Path != "" {
-		if item.From.Path != "" && strings.HasSuffix(item.From.Path, "/*") {
-			subPath := req.URL.Path[len(item.From.Path)-2:]
-			req.URL.Path = path.Join("/", item.To.Path, subPath)
+	if itm.To.Path != "" {
+		if itm.From.Path != "" && strings.HasSuffix(itm.From.Path, "/*") {
+			subPath := req.URL.Path[len(itm.From.Path)-2:]
+			req.URL.Path = path.Join("/", itm.To.Path, subPath)
 		} else {
-			req.URL.Path = path.Join("/", item.To.Path)
+			req.URL.Path = path.Join("/", itm.To.Path)
 		}
 	}
 	return req

@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 //
@@ -18,12 +19,12 @@ type CloseConn struct {
 	proxy.BaseAddon
 }
 
-func (a *CloseConn) ClientConnected(client *proxy.ClientConn) {
+func (*CloseConn) ClientConnected(client *proxy.ClientConn) {
 	// necessary
 	client.UpstreamCert = false
 }
 
-func (a *CloseConn) Requestheaders(f *proxy.Flow) {
+func (*CloseConn) Requestheaders(f *proxy.Flow) {
 	// give some response to client
 	// then will not request remote server
 	f.Response = &proxy.Response{

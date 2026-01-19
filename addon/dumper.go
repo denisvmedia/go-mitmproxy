@@ -9,8 +9,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 type Dumper struct {
@@ -41,7 +42,7 @@ func (d *Dumper) Requestheaders(f *proxy.Flow) {
 	}()
 }
 
-// call when <-f.Done()
+// call when <-f.Done().
 func (d *Dumper) dump(f *proxy.Flow) {
 	// Reference: httputil.DumpRequest
 

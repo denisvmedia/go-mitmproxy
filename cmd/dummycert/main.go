@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/denisvmedia/go-mitmproxy/cert"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/cert"
 )
 
 // Generate fake/test server certificates
@@ -20,7 +21,7 @@ type Config struct {
 func loadConfig() *Config {
 	config := new(Config)
 	flag.StringVar(&config.commonName, "commonName", "", "server commonName")
-	flag.Parse()
+	flag.Parse() //revive:disable-line:deep-exit -- ok for cmd/*
 	return config
 }
 
@@ -37,25 +38,28 @@ func main() {
 		log.Fatal("commonName required")
 	}
 
-	caApi, err := cert.NewSelfSignCA("")
+	caAPI, err := cert.NewSelfSignCA("")
 	if err != nil {
 		panic(err)
 	}
-	ca := caApi.(*cert.SelfSignCA)
+	selfSignCA, ok := caAPI.(*cert.SelfSignCA)
+	if !ok {
+		panic("caAPI is not a *cert.SelfSignCA")
+	}
 
-	cert, err := ca.DummyCert(config.commonName)
+	tlsCert, err := selfSignCA.DummyCert(config.commonName)
 	if err != nil {
 		panic(err)
 	}
 
-	os.Stdout.WriteString(fmt.Sprintf("%v-cert.pem\n", config.commonName))
-	err = pem.Encode(os.Stdout, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+	fmt.Fprintf(os.Stdout, "%v-cert.pem\n", config.commonName)
+	err = pem.Encode(os.Stdout, &pem.Block{Type: "CERTIFICATE", Bytes: tlsCert.Certificate[0]})
 	if err != nil {
 		panic(err)
 	}
-	os.Stdout.WriteString(fmt.Sprintf("\n%v-key.pem\n", config.commonName))
+	fmt.Fprintf(os.Stdout, "\n%v-key.pem\n", config.commonName)
 
-	keyBytes, err := x509.MarshalPKCS8PrivateKey(&ca.PrivateKey)
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(&selfSignCA.PrivateKey)
 	if err != nil {
 		panic(err)
 	}

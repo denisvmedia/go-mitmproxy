@@ -38,7 +38,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "",
 		Host:     "example.com",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
@@ -50,7 +50,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "",
 		Host:     "",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "/path/to/*",
 	}
 	result = item.match(req)
@@ -62,7 +62,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "",
 		Host:     "",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "",
 	}
 	result = item.match(req)
@@ -76,7 +76,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "http",
 		Host:     "example.com",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
@@ -88,7 +88,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "https",
 		Host:     "hello.com",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
@@ -112,7 +112,7 @@ func TestMapItemMatch(t *testing.T) {
 	item.From = &mapFrom{
 		Protocol: "http",
 		Host:     "example.com",
-		Method:   []string{},
+		Method:   nil,
 		Path:     "/hello/world",
 	}
 	result = item.match(req)

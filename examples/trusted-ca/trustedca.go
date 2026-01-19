@@ -6,10 +6,11 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/golang/groupcache/lru"
 	"github.com/golang/groupcache/singleflight"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/cert"
 )
 
 type TrustedCA struct {
@@ -26,7 +27,7 @@ func NewTrustedCA() (cert.CA, error) {
 	return ca, nil
 }
 
-func (ca *TrustedCA) GetRootCA() *x509.Certificate {
+func (*TrustedCA) GetRootCA() *x509.Certificate {
 	panic("not supported")
 }
 
@@ -35,11 +36,15 @@ func (ca *TrustedCA) GetCert(commonName string) (*tls.Certificate, error) {
 	if val, ok := ca.cache.Get(commonName); ok {
 		ca.cacheMu.Unlock()
 		log.Debugf("ca GetCert: %v", commonName)
-		return val.(*tls.Certificate), nil
+		tlsCert, ok := val.(*tls.Certificate)
+		if !ok {
+			return nil, errors.New("cached value is not a tls.Certificate")
+		}
+		return tlsCert, nil
 	}
 	ca.cacheMu.Unlock()
 
-	val, err := ca.group.Do(commonName, func() (interface{}, error) {
+	val, err := ca.group.Do(commonName, func() (any, error) {
 		certificate, err := ca.loadCert(commonName)
 		if err == nil {
 			ca.cacheMu.Lock()
@@ -53,10 +58,14 @@ func (ca *TrustedCA) GetCert(commonName string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
-	return val.(*tls.Certificate), nil
+	tlsCert, ok := val.(*tls.Certificate)
+	if !ok {
+		return nil, errors.New("loaded value is not a tls.Certificate")
+	}
+	return tlsCert, nil
 }
 
-func (ca *TrustedCA) loadCert(commonName string) (*tls.Certificate, error) {
+func (*TrustedCA) loadCert(commonName string) (*tls.Certificate, error) {
 	switch commonName {
 	case "your-domain.xx.com":
 		certificate, err := tls.LoadX509KeyPair("cert Path", "key Path")

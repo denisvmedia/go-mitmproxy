@@ -8,6 +8,6 @@ type Decoder struct {
 	proxy.BaseAddon
 }
 
-func (d *Decoder) Response(f *proxy.Flow) {
+func (*Decoder) Response(f *proxy.Flow) {
 	f.Response.ReplaceToDecodedBody()
 }

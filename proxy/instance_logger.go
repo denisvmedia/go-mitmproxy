@@ -18,13 +18,13 @@ type InstanceLogger struct {
 	fileLogger   *log.Logger
 }
 
-// NewInstanceLogger creates a logger with instance identification
-func NewInstanceLogger(addr string, instanceName string) *InstanceLogger {
+// NewInstanceLogger creates a logger with instance identification.
+func NewInstanceLogger(addr, instanceName string) *InstanceLogger {
 	return NewInstanceLoggerWithFile(addr, instanceName, "")
 }
 
-// NewInstanceLoggerWithFile creates a logger with instance identification and optional file output
-func NewInstanceLoggerWithFile(addr string, instanceName string, logFilePath string) *InstanceLogger {
+// NewInstanceLoggerWithFile creates a logger with instance identification and optional file output.
+func NewInstanceLoggerWithFile(addr, instanceName, logFilePath string) *InstanceLogger {
 	// Extract port from address
 	port := addr
 	if idx := strings.LastIndex(addr, ":"); idx != -1 {
@@ -48,12 +48,13 @@ func NewInstanceLoggerWithFile(addr string, instanceName string, logFilePath str
 		file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to open log file: %s", logFilePath)
-		} else {
+		}
+		if err == nil {
 			// Create a dedicated logger for file output
 			il.fileLogger = log.New()
 			il.fileLogger.SetOutput(file)
 			il.fileLogger.SetFormatter(&log.JSONFormatter{})
-			
+
 			// Use the file logger as base
 			il.logger = il.fileLogger.WithFields(log.Fields{
 				"instance_id":   il.InstanceID,
@@ -74,62 +75,62 @@ func NewInstanceLoggerWithFile(addr string, instanceName string, logFilePath str
 	return il
 }
 
-// WithFields adds additional fields to the logger
+// WithFields adds additional fields to the logger.
 func (il *InstanceLogger) WithFields(fields log.Fields) *log.Entry {
 	return il.logger.WithFields(fields)
 }
 
-// Info logs at info level
-func (il *InstanceLogger) Info(args ...interface{}) {
+// Info logs at info level.
+func (il *InstanceLogger) Info(args ...any) {
 	il.logger.Info(args...)
 }
 
-// Infof logs formatted at info level
-func (il *InstanceLogger) Infof(format string, args ...interface{}) {
+// Infof logs formatted at info level.
+func (il *InstanceLogger) Infof(format string, args ...any) {
 	il.logger.Infof(format, args...)
 }
 
-// Debug logs at debug level
-func (il *InstanceLogger) Debug(args ...interface{}) {
+// Debug logs at debug level.
+func (il *InstanceLogger) Debug(args ...any) {
 	il.logger.Debug(args...)
 }
 
-// Debugf logs formatted at debug level
-func (il *InstanceLogger) Debugf(format string, args ...interface{}) {
+// Debugf logs formatted at debug level.
+func (il *InstanceLogger) Debugf(format string, args ...any) {
 	il.logger.Debugf(format, args...)
 }
 
-// Error logs at error level
-func (il *InstanceLogger) Error(args ...interface{}) {
+// Error logs at error level.
+func (il *InstanceLogger) Error(args ...any) {
 	il.logger.Error(args...)
 }
 
-// Errorf logs formatted at error level
-func (il *InstanceLogger) Errorf(format string, args ...interface{}) {
+// Errorf logs formatted at error level.
+func (il *InstanceLogger) Errorf(format string, args ...any) {
 	il.logger.Errorf(format, args...)
 }
 
-// Warn logs at warn level
-func (il *InstanceLogger) Warn(args ...interface{}) {
+// Warn logs at warn level.
+func (il *InstanceLogger) Warn(args ...any) {
 	il.logger.Warn(args...)
 }
 
-// Warnf logs formatted at warn level
-func (il *InstanceLogger) Warnf(format string, args ...interface{}) {
+// Warnf logs formatted at warn level.
+func (il *InstanceLogger) Warnf(format string, args ...any) {
 	il.logger.Warnf(format, args...)
 }
 
-// Fatal logs at fatal level
-func (il *InstanceLogger) Fatal(args ...interface{}) {
+// Fatal logs at fatal level.
+func (il *InstanceLogger) Fatal(args ...any) {
 	il.logger.Fatal(args...)
 }
 
-// Fatalf logs formatted at fatal level
-func (il *InstanceLogger) Fatalf(format string, args ...interface{}) {
+// Fatalf logs formatted at fatal level.
+func (il *InstanceLogger) Fatalf(format string, args ...any) {
 	il.logger.Fatalf(format, args...)
 }
 
-// GetEntry returns the underlying logrus entry
+// GetEntry returns the underlying logrus entry.
 func (il *InstanceLogger) GetEntry() *log.Entry {
 	return il.logger
 }

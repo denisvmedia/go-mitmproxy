@@ -4,40 +4,40 @@ import (
 	"time"
 )
 
-// InstanceLogAddon logs with instance identification
+// InstanceLogAddon logs with instance identification.
 type InstanceLogAddon struct {
 	BaseAddon
 	logger *InstanceLogger
 }
 
-// NewInstanceLogAddonWithFile creates a new instance-aware log addon with file output
-func NewInstanceLogAddonWithFile(addr string, instanceName string, logFilePath string) *InstanceLogAddon {
+// NewInstanceLogAddonWithFile creates a new instance-aware log addon with file output.
+func NewInstanceLogAddonWithFile(addr, instanceName, logFilePath string) *InstanceLogAddon {
 	return &InstanceLogAddon{
 		logger: NewInstanceLoggerWithFile(addr, instanceName, logFilePath),
 	}
 }
 
-// SetLogger allows setting a custom instance logger
-func (addon *InstanceLogAddon) SetLogger(logger *InstanceLogger) {
-	addon.logger = logger
+// SetLogger allows setting a custom instance logger.
+func (adn *InstanceLogAddon) SetLogger(logger *InstanceLogger) {
+	adn.logger = logger
 }
 
-func (addon *InstanceLogAddon) ClientConnected(client *ClientConn) {
-	addon.logger.WithFields(map[string]interface{}{
+func (adn *InstanceLogAddon) ClientConnected(client *ClientConn) {
+	adn.logger.WithFields(map[string]any{
 		"client_addr": client.Conn.RemoteAddr().String(),
 		"event":       "client_connected",
 	}).Info("Client connected")
 }
 
-func (addon *InstanceLogAddon) ClientDisconnected(client *ClientConn) {
-	addon.logger.WithFields(map[string]interface{}{
+func (adn *InstanceLogAddon) ClientDisconnected(client *ClientConn) {
+	adn.logger.WithFields(map[string]any{
 		"client_addr": client.Conn.RemoteAddr().String(),
 		"event":       "client_disconnected",
 	}).Info("Client disconnected")
 }
 
-func (addon *InstanceLogAddon) ServerConnected(connCtx *ConnContext) {
-	addon.logger.WithFields(map[string]interface{}{
+func (adn *InstanceLogAddon) ServerConnected(connCtx *ConnContext) {
+	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
 		"local_addr":  connCtx.ServerConn.Conn.LocalAddr().String(),
@@ -46,8 +46,8 @@ func (addon *InstanceLogAddon) ServerConnected(connCtx *ConnContext) {
 	}).Info("Server connected")
 }
 
-func (addon *InstanceLogAddon) ServerDisconnected(connCtx *ConnContext) {
-	addon.logger.WithFields(map[string]interface{}{
+func (adn *InstanceLogAddon) ServerDisconnected(connCtx *ConnContext) {
+	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
 		"local_addr":  connCtx.ServerConn.Conn.LocalAddr().String(),
@@ -57,10 +57,10 @@ func (addon *InstanceLogAddon) ServerDisconnected(connCtx *ConnContext) {
 	}).Info("Server disconnected")
 }
 
-func (addon *InstanceLogAddon) Requestheaders(f *Flow) {
+func (adn *InstanceLogAddon) Requestheaders(f *Flow) {
 	start := time.Now()
 
-	addon.logger.WithFields(map[string]interface{}{
+	adn.logger.WithFields(map[string]any{
 		"client_addr": f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
 		"method":      f.Request.Method,
 		"url":         f.Request.URL.String(),
@@ -79,7 +79,7 @@ func (addon *InstanceLogAddon) Requestheaders(f *Flow) {
 			contentLen = len(f.Response.Body)
 		}
 
-		addon.logger.WithFields(map[string]interface{}{
+		adn.logger.WithFields(map[string]any{
 			"client_addr": f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
 			"method":      f.Request.Method,
 			"url":         f.Request.URL.String(),
@@ -91,21 +91,21 @@ func (addon *InstanceLogAddon) Requestheaders(f *Flow) {
 	}()
 }
 
-func (addon *InstanceLogAddon) TlsEstablishedServer(connCtx *ConnContext) {
-	addon.logger.WithFields(map[string]interface{}{
+func (adn *InstanceLogAddon) TLSEstablishedServer(connCtx *ConnContext) {
+	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
 		"event":       "tls_established",
 	}).Debug("TLS connection established with server")
 }
 
-func (addon *InstanceLogAddon) Request(f *Flow) {
+func (adn *InstanceLogAddon) Request(f *Flow) {
 	bodyLen := 0
 	if f.Request.Body != nil {
 		bodyLen = len(f.Request.Body)
 	}
 
-	addon.logger.WithFields(map[string]interface{}{
+	adn.logger.WithFields(map[string]any{
 		"client_addr": f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
 		"method":      f.Request.Method,
 		"url":         f.Request.URL.String(),
@@ -114,13 +114,13 @@ func (addon *InstanceLogAddon) Request(f *Flow) {
 	}).Debug("Full request received")
 }
 
-func (addon *InstanceLogAddon) Response(f *Flow) {
+func (adn *InstanceLogAddon) Response(f *Flow) {
 	bodyLen := 0
 	if f.Response != nil && f.Response.Body != nil {
 		bodyLen = len(f.Response.Body)
 	}
 
-	addon.logger.WithFields(map[string]interface{}{
+	adn.logger.WithFields(map[string]any{
 		"client_addr": f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
 		"method":      f.Request.Method,
 		"url":         f.Request.URL.String(),

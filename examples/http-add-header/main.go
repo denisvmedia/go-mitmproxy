@@ -14,7 +14,7 @@ type AddHeader struct {
 }
 
 func (a *AddHeader) Responseheaders(f *proxy.Flow) {
-	a.count += 1
+	a.count++
 	f.Response.Header.Add("x-count", strconv.Itoa(a.count))
 }
 

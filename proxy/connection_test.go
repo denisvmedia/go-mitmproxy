@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func testGetResponse(t *testing.T, endpoint string, client *http.Client) (*http.Response, []byte) {
+func testGetResponse(t *testing.T, endpoint string, client *http.Client) *http.Response {
 	t.Helper()
 	req, err := http.NewRequest("GET", endpoint, nil)
 	handleError(t, err)
@@ -19,18 +19,18 @@ func testGetResponse(t *testing.T, endpoint string, client *http.Client) (*http.
 	resp, err := client.Do(req)
 	handleError(t, err)
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	handleError(t, err)
-	return resp, body
+	return resp
 }
 
 type testConnectionAddon struct {
 	BaseAddon
 }
 
-func (a *testConnectionAddon) Response(f *Flow) {
+func (*testConnectionAddon) Response(f *Flow) {
 	tlsStr := "0"
-	if f.ConnContext.ClientConn.Tls {
+	if f.ConnContext.ClientConn.TLS {
 		tlsStr = "1"
 	}
 	f.Response.Header.Add("tls", tlsStr)
@@ -55,16 +55,16 @@ func TestConnection(t *testing.T) {
 	testProxy.AddAddon(&testConnectionAddon{})
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.ServeTLS(helper.tlsPlainLn, "", "")
-	go testProxy.Start()
+	go func() { _ = helper.server.ServeTLS(helper.tlsPlainLn, "", "") }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	t.Run("ClientConn state", func(t *testing.T) {
 		t.Run("http", func(t *testing.T) {
 			client := getProxyClient()
-			resp, _ := testGetResponse(t, httpEndpoint, client)
+			resp := testGetResponse(t, httpEndpoint, client)
 			if resp.Header.Get("tls") != "0" {
 				t.Fatalf("expected %s, but got %s", "0", resp.Header.Get("tls"))
 			}
@@ -75,7 +75,7 @@ func TestConnection(t *testing.T) {
 
 		t.Run("https", func(t *testing.T) {
 			client := getProxyClient()
-			resp, _ := testGetResponse(t, httpsEndpoint, client)
+			resp := testGetResponse(t, httpsEndpoint, client)
 			if resp.Header.Get("tls") != "1" {
 				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
 			}
@@ -96,7 +96,7 @@ func TestConnection(t *testing.T) {
 					},
 				},
 			}
-			resp, _ := testGetResponse(t, httpsEndpoint, client)
+			resp := testGetResponse(t, httpsEndpoint, client)
 			if resp.Header.Get("tls") != "1" {
 				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
 			}
@@ -121,16 +121,16 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 	testProxy.AddAddon(&testConnectionAddon{})
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
-	go helper.server.Serve(helper.ln)
+	go func() { _ = helper.server.Serve(helper.ln) }()
 	defer helper.tlsPlainLn.Close()
-	go helper.server.ServeTLS(helper.tlsPlainLn, "", "")
-	go testProxy.Start()
+	go func() { _ = helper.server.ServeTLS(helper.tlsPlainLn, "", "") }()
+	go func() { _ = testProxy.Start() }()
 	time.Sleep(time.Millisecond * 10) // wait for test proxy startup
 
 	t.Run("ClientConn state", func(t *testing.T) {
 		t.Run("http", func(t *testing.T) {
 			client := getProxyClient()
-			resp, _ := testGetResponse(t, httpEndpoint, client)
+			resp := testGetResponse(t, httpEndpoint, client)
 			if resp.Header.Get("tls") != "0" {
 				t.Fatalf("expected %s, but got %s", "0", resp.Header.Get("tls"))
 			}
@@ -141,7 +141,7 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 
 		t.Run("https", func(t *testing.T) {
 			client := getProxyClient()
-			resp, _ := testGetResponse(t, httpsEndpoint, client)
+			resp := testGetResponse(t, httpsEndpoint, client)
 			if resp.Header.Get("tls") != "1" {
 				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
 			}
@@ -162,7 +162,7 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 					},
 				},
 			}
-			resp, _ := testGetResponse(t, httpsEndpoint, client)
+			resp := testGetResponse(t, httpsEndpoint, client)
 			if resp.Header.Get("tls") != "1" {
 				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
 			}

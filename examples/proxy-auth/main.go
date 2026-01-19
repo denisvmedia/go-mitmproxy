@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/denisvmedia/go-mitmproxy/proxy"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 type UserAuth struct {
@@ -15,12 +17,12 @@ type UserAuth struct {
 }
 
 // AuthEntrypAuth handles the proxy authentication for the entry point.
-func (user *UserAuth) AuthEntrypAuth(res http.ResponseWriter, req *http.Request) (bool, error) {
+func (usr *UserAuth) AuthEntrypAuth(_ http.ResponseWriter, req *http.Request) (bool, error) {
 	get := req.Header.Get("Proxy-Authorization")
 	if get == "" {
 		return false, errors.New("empty auth")
 	}
-	auth := user.parseRequestAuth(get)
+	auth := usr.parseRequestAuth(get)
 	if !auth {
 		return false, errors.New("error auth")
 	}
@@ -28,7 +30,7 @@ func (user *UserAuth) AuthEntrypAuth(res http.ResponseWriter, req *http.Request)
 }
 
 // parseRequestAuth decodes and validates the Proxy-Authorization header.
-func (user *UserAuth) parseRequestAuth(proxyAuth string) bool {
+func (usr *UserAuth) parseRequestAuth(proxyAuth string) bool {
 	if !strings.HasPrefix(proxyAuth, "Basic ") {
 		return false
 	}
@@ -43,7 +45,7 @@ func (user *UserAuth) parseRequestAuth(proxyAuth string) bool {
 	if len(n) < 2 {
 		return false
 	}
-	if user.Username != n[0] || user.Password != n[1] {
+	if usr.Username != n[0] || usr.Password != n[1] {
 		return false
 	}
 	return true

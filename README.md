@@ -129,7 +129,7 @@ type Addon interface {
 	ServerDisconnected(*ConnContext)
 
 	// The TLS handshake with the server has been completed successfully.
-	TlsEstablishedServer(*ConnContext)
+	TLSEstablishedServer(*ConnContext)
 
 	// HTTP request headers were successfully read. At this point, the body is empty.
 	Requestheaders(*Flow)

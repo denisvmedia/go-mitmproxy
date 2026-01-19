@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"net/url"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
-	log "github.com/sirupsen/logrus"
 )
 
 type Options struct {
@@ -36,7 +37,7 @@ type Proxy struct {
 	authProxy       func(res http.ResponseWriter, req *http.Request) (bool, error)
 }
 
-// proxy.server req context key
+// proxy.server req context key.
 var proxyReqCtxKey = new(struct{})
 
 func NewProxy(opts *Options) (*Proxy, error) {
@@ -61,76 +62,79 @@ func NewProxy(opts *Options) (*Proxy, error) {
 	return proxy, nil
 }
 
-func (proxy *Proxy) AddAddon(addon Addon) {
-	proxy.Addons = append(proxy.Addons, addon)
+func (prx *Proxy) AddAddon(addon Addon) {
+	prx.Addons = append(prx.Addons, addon)
 }
 
-func (proxy *Proxy) Start() error {
+func (prx *Proxy) Start() error {
 	go func() {
-		if err := proxy.attacker.start(); err != nil {
+		if err := prx.attacker.start(); err != nil {
 			log.Error(err)
 		}
 	}()
-	return proxy.entry.start()
+	return prx.entry.start()
 }
 
-func (proxy *Proxy) Close() error {
-	return proxy.entry.close()
+func (prx *Proxy) Close() error {
+	return prx.entry.close()
 }
 
-func (proxy *Proxy) Shutdown(ctx context.Context) error {
-	return proxy.entry.shutdown(ctx)
+func (prx *Proxy) Shutdown(ctx context.Context) error {
+	return prx.entry.shutdown(ctx)
 }
 
-func (proxy *Proxy) GetCertificate() x509.Certificate {
-	return *proxy.attacker.ca.GetRootCA()
+func (prx *Proxy) GetCertificate() x509.Certificate {
+	return *prx.attacker.ca.GetRootCA()
 }
 
-func (proxy *Proxy) GetCertificateByCN(commonName string) (*tls.Certificate, error) {
-	return proxy.attacker.ca.GetCert(commonName)
+func (prx *Proxy) GetCertificateByCN(commonName string) (*tls.Certificate, error) {
+	return prx.attacker.ca.GetCert(commonName)
 }
 
-func (proxy *Proxy) SetShouldInterceptRule(rule func(req *http.Request) bool) {
-	proxy.shouldIntercept = rule
+func (prx *Proxy) SetShouldInterceptRule(rule func(req *http.Request) bool) {
+	prx.shouldIntercept = rule
 }
 
-func (proxy *Proxy) SetUpstreamProxy(fn func(req *http.Request) (*url.URL, error)) {
-	proxy.upstreamProxy = fn
+func (prx *Proxy) SetUpstreamProxy(fn func(req *http.Request) (*url.URL, error)) {
+	prx.upstreamProxy = fn
 }
 
-func (proxy *Proxy) realUpstreamProxy() func(*http.Request) (*url.URL, error) {
+func (prx *Proxy) realUpstreamProxy() func(*http.Request) (*url.URL, error) {
 	return func(cReq *http.Request) (*url.URL, error) {
-		req := cReq.Context().Value(proxyReqCtxKey).(*http.Request)
-		return proxy.getUpstreamProxyUrl(req)
+		req, ok := cReq.Context().Value(proxyReqCtxKey).(*http.Request)
+		if !ok {
+			panic("failed to get original request from context")
+		}
+		return prx.getUpstreamProxyURL(req)
 	}
 }
 
-func (proxy *Proxy) getUpstreamProxyUrl(req *http.Request) (*url.URL, error) {
-	if proxy.upstreamProxy != nil {
-		return proxy.upstreamProxy(req)
+func (prx *Proxy) getUpstreamProxyURL(req *http.Request) (*url.URL, error) {
+	if prx.upstreamProxy != nil {
+		return prx.upstreamProxy(req)
 	}
-	if len(proxy.Opts.Upstream) > 0 {
-		return url.Parse(proxy.Opts.Upstream)
+	if len(prx.Opts.Upstream) > 0 {
+		return url.Parse(prx.Opts.Upstream)
 	}
 	cReq := &http.Request{URL: &url.URL{Scheme: "https", Host: req.Host}}
 	return http.ProxyFromEnvironment(cReq)
 }
 
-func (proxy *Proxy) getUpstreamConn(ctx context.Context, req *http.Request) (net.Conn, error) {
-	proxyUrl, err := proxy.getUpstreamProxyUrl(req)
+func (prx *Proxy) getUpstreamConn(ctx context.Context, req *http.Request) (net.Conn, error) {
+	proxyURL, err := prx.getUpstreamProxyURL(req)
 	if err != nil {
 		return nil, err
 	}
 	var conn net.Conn
 	address := helper.CanonicalAddr(req.URL)
-	if proxyUrl != nil {
-		conn, err = helper.GetProxyConn(ctx, proxyUrl, address, proxy.Opts.SslInsecure)
+	if proxyURL != nil {
+		conn, err = helper.GetProxyConn(ctx, proxyURL, address, prx.Opts.SslInsecure)
 	} else {
 		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
 	return conn, err
 }
 
-func (proxy *Proxy) SetAuthProxy(fn func(res http.ResponseWriter, req *http.Request) (bool, error)) {
-	proxy.authProxy = fn
+func (prx *Proxy) SetAuthProxy(fn func(res http.ResponseWriter, req *http.Request) (bool, error)) {
+	prx.authProxy = fn
 }

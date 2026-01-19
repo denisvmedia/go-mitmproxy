@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -83,7 +82,7 @@ func createCert() (*rsa.PrivateKey, *x509.Certificate, error) {
 	return key, cert, nil
 }
 
-// NewSelfSignCAMemory Create new ca only live in memory, will change when process restart
+// NewSelfSignCAMemory Create new ca only live in memory, will change when process restart.
 func NewSelfSignCAMemory() (CA, error) {
 	key, cert, err := createCert()
 	if err != nil {
@@ -98,7 +97,7 @@ func NewSelfSignCAMemory() (CA, error) {
 	}, nil
 }
 
-// NewSelfSignCA Load ca from store path or create new ca then store
+// NewSelfSignCA Load ca from store path or create new ca then store.
 func NewSelfSignCA(path string) (CA, error) {
 	storePath, err := getStorePath(path)
 	if err != nil {
@@ -111,13 +110,13 @@ func NewSelfSignCA(path string) (CA, error) {
 		group:     new(singleflight.Group),
 	}
 
-	if err := ca.load(); err != nil {
-		if err != errCaNotFound {
-			return nil, err
-		}
-	} else {
+	err = ca.load()
+	if err == nil {
 		log.Debug("load root ca")
 		return ca, nil
+	}
+	if !errors.Is(err, errCaNotFound) {
+		return nil, err
 	}
 
 	if err := ca.create(); err != nil {
@@ -146,18 +145,18 @@ func getStorePath(path string) (string, error) {
 
 	stat, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(path, os.ModePerm)
-			if err != nil {
-				return "", err
-			}
-		} else {
+		if !os.IsNotExist(err) {
 			return "", err
 		}
-	} else {
-		if !stat.Mode().IsDir() {
-			return "", fmt.Errorf("path %v is not a directory, please remove this file and retry", path)
+		err = os.MkdirAll(path, os.ModePerm)
+		if err != nil {
+			return "", err
 		}
+		return path, nil
+	}
+
+	if !stat.Mode().IsDir() {
+		return "", fmt.Errorf("path %v is not a directory, please remove this file and retry", path)
 	}
 
 	return path, nil
@@ -191,7 +190,7 @@ func (ca *SelfSignCA) load() error {
 		return fmt.Errorf("%v is not a file", caFile)
 	}
 
-	data, err := ioutil.ReadFile(caFile)
+	data, err := os.ReadFile(caFile)
 	if err != nil {
 		return err
 	}
@@ -209,20 +208,19 @@ func (ca *SelfSignCA) load() error {
 	key, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes)
 	if err != nil {
 		// fix #14
-		if strings.Contains(err.Error(), "use ParsePKCS1PrivateKey instead") {
-			privateKey, err = x509.ParsePKCS1PrivateKey(keyDERBlock.Bytes)
-			if err != nil {
-				return err
-			}
-		} else {
+		if !strings.Contains(err.Error(), "use ParsePKCS1PrivateKey instead") {
+			return err
+		}
+		privateKey, err = x509.ParsePKCS1PrivateKey(keyDERBlock.Bytes)
+		if err != nil {
 			return err
 		}
 	} else {
-		if v, ok := key.(*rsa.PrivateKey); ok {
-			privateKey = v
-		} else {
+		v, ok := key.(*rsa.PrivateKey)
+		if !ok {
 			return errors.New("found unknown rsa private key type in PKCS#8 wrapping")
 		}
+		privateKey = v
 	}
 	ca.PrivateKey = *privateKey
 
@@ -308,11 +306,15 @@ func (ca *SelfSignCA) GetCert(commonName string) (*tls.Certificate, error) {
 	if val, ok := ca.cache.Get(commonName); ok {
 		ca.cacheMu.Unlock()
 		log.Debugf("ca GetCert: %v", commonName)
-		return val.(*tls.Certificate), nil
+		cert, ok := val.(*tls.Certificate)
+		if !ok {
+			return nil, errors.New("cached value is not a tls.Certificate")
+		}
+		return cert, nil
 	}
 	ca.cacheMu.Unlock()
 
-	val, err := ca.group.Do(commonName, func() (interface{}, error) {
+	val, err := ca.group.Do(commonName, func() (any, error) {
 		cert, err := ca.DummyCert(commonName)
 		if err == nil {
 			ca.cacheMu.Lock()
@@ -326,10 +328,14 @@ func (ca *SelfSignCA) GetCert(commonName string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
-	return val.(*tls.Certificate), nil
+	cert, ok := val.(*tls.Certificate)
+	if !ok {
+		return nil, errors.New("generated value is not a tls.Certificate")
+	}
+	return cert, nil
 }
 
-// TODO: Should we support multiple SubjectAltNames
+// TODO: Should we support multiple SubjectAltNames.
 func (ca *SelfSignCA) DummyCert(commonName string) (*tls.Certificate, error) {
 	log.Debugf("ca DummyCert: %v", commonName)
 	template := &x509.Certificate{

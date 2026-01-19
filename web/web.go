@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 //go:embed client/build
@@ -34,7 +35,7 @@ func NewWebAddon(addr string) *WebAddon {
 	}
 
 	web.upgrader = &websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
+		CheckOrigin: func(_ *http.Request) bool {
 			return true
 		},
 	}
@@ -101,17 +102,13 @@ func (web *WebAddon) removeConn(conn *concurrentConn) {
 	web.conns = append(web.conns[:index], web.conns[index+1:]...)
 }
 
-func (web *WebAddon) forEachConn(do func(c *concurrentConn)) bool {
+func (web *WebAddon) forEachConn(do func(c *concurrentConn)) {
 	web.connsMu.RLock()
 	conns := web.conns
 	web.connsMu.RUnlock()
-	if len(conns) == 0 {
-		return false
-	}
 	for _, c := range conns {
 		do(c)
 	}
-	return true
 }
 
 func (web *WebAddon) sendFlowMayWait(f *proxy.Flow, msgFn func() (*messageFlow, error)) {
@@ -147,7 +144,7 @@ func (web *WebAddon) Requestheaders(f *proxy.Flow) {
 		web.flowMu.Unlock()
 	}()
 
-	if f.ConnContext.ClientConn.Tls {
+	if f.ConnContext.ClientConn.TLS {
 		web.forEachConn(func(c *concurrentConn) {
 			c.trySendConnMessage(f)
 		})
@@ -166,7 +163,7 @@ func (web *WebAddon) Request(f *proxy.Flow) {
 }
 
 func (web *WebAddon) Responseheaders(f *proxy.Flow) {
-	if !f.ConnContext.ClientConn.Tls {
+	if !f.ConnContext.ClientConn.TLS {
 		web.forEachConn(func(c *concurrentConn) {
 			c.trySendConnMessage(f)
 		})

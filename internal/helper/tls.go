@@ -8,11 +8,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Wireshark HTTPS parsing configuration
+// Wireshark HTTPS parsing configuration.
 var tlsKeyLogWriter io.Writer
 var tlsKeyLogOnce sync.Once
 
-func GetTlsKeyLogWriter() io.Writer {
+func GetTLSKeyLogWriter() io.Writer {
 	tlsKeyLogOnce.Do(func() {
 		logfile := os.Getenv("SSLKEYLOGFILE")
 		if logfile == "" {

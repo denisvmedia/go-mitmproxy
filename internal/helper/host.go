@@ -2,7 +2,7 @@ package helper
 
 import "strings"
 
-// MatchHost detect hosts is match address
+// MatchHost detect hosts is match address.
 func MatchHost(address string, hosts []string) bool {
 	hostname, port := splitHostPort(address)
 	for _, host := range hosts {
@@ -14,7 +14,7 @@ func MatchHost(address string, hosts []string) bool {
 	return false
 }
 
-func matchHostname(hostname string, h string) bool {
+func matchHostname(hostname, h string) bool {
 	if h == "*" {
 		return true
 	}
@@ -24,7 +24,7 @@ func matchHostname(hostname string, h string) bool {
 	return h == hostname
 }
 
-func splitHostPort(address string) (string, string) {
+func splitHostPort(address string) (host, port string) {
 	index := strings.LastIndex(address, ":")
 	if index == -1 {
 		return address, ""

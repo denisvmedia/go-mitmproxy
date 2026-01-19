@@ -10,7 +10,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-// flow http request
+// flow http request.
 type Request struct {
 	Method string
 	URL    *url.URL
@@ -35,23 +35,23 @@ func (r *Request) Raw() *http.Request {
 	return r.raw
 }
 
-func (req *Request) MarshalJSON() ([]byte, error) {
-	r := make(map[string]interface{})
-	r["method"] = req.Method
-	r["url"] = req.URL.String()
-	r["proto"] = req.Proto
-	r["header"] = req.Header
-	return json.Marshal(r)
+func (r *Request) MarshalJSON() ([]byte, error) {
+	m := make(map[string]any)
+	m["method"] = r.Method
+	m["url"] = r.URL.String()
+	m["proto"] = r.Proto
+	m["header"] = r.Header
+	return json.Marshal(m)
 }
 
-func (req *Request) UnmarshalJSON(data []byte) error {
-	r := make(map[string]interface{})
-	err := json.Unmarshal(data, &r)
+func (r *Request) UnmarshalJSON(data []byte) error {
+	m := make(map[string]any)
+	err := json.Unmarshal(data, &m)
 	if err != nil {
 		return err
 	}
 
-	rawurl, ok := r["url"].(string)
+	rawurl, ok := m["url"].(string)
 	if !ok {
 		return errors.New("url parse error")
 	}
@@ -60,14 +60,14 @@ func (req *Request) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	rawheader, ok := r["header"].(map[string]interface{})
+	rawheader, ok := m["header"].(map[string]any)
 	if !ok {
 		return errors.New("rawheader parse error")
 	}
 
 	header := make(map[string][]string)
 	for k, v := range rawheader {
-		vals, ok := v.([]interface{})
+		vals, ok := v.([]any)
 		if !ok {
 			return errors.New("header parse error")
 		}
@@ -83,16 +83,16 @@ func (req *Request) UnmarshalJSON(data []byte) error {
 		header[k] = svals
 	}
 
-	*req = Request{
-		Method: r["method"].(string),
+	*r = Request{
+		Method: m["method"].(string),
 		URL:    u,
-		Proto:  r["proto"].(string),
+		Proto:  m["proto"].(string),
 		Header: header,
 	}
 	return nil
 }
 
-// flow http response
+// flow http response.
 type Response struct {
 	StatusCode int         `json:"statusCode"`
 	Header     http.Header `json:"header"`
@@ -102,9 +102,9 @@ type Response struct {
 	close bool // connection close
 }
 
-// flow
+// flow.
 type Flow struct {
-	Id          uuid.UUID
+	ID          uuid.UUID
 	ConnContext *ConnContext
 	Request     *Request
 	Response    *Response
@@ -118,7 +118,7 @@ type Flow struct {
 
 func newFlow() *Flow {
 	return &Flow{
-		Id:   uuid.NewV4(),
+		ID:   uuid.NewV4(),
 		done: make(chan struct{}),
 	}
 }
@@ -132,8 +132,8 @@ func (f *Flow) finish() {
 }
 
 func (f *Flow) MarshalJSON() ([]byte, error) {
-	j := make(map[string]interface{})
-	j["id"] = f.Id
+	j := make(map[string]any)
+	j["id"] = f.ID
 	j["request"] = f.Request
 	j["response"] = f.Response
 	return json.Marshal(j)

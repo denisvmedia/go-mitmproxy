@@ -28,12 +28,12 @@ var defaultWebSocket webSocket
 // 	transfer(log, conn, remoteConn)
 // }
 
-func (s *webSocket) wss(res http.ResponseWriter, req *http.Request) {
-	log := log.WithField("in", "webSocket.wss").WithField("host", req.Host)
+func (*webSocket) wss(res http.ResponseWriter, req *http.Request) {
+	logger := log.WithField("in", "webSocket.wss").WithField("host", req.Host)
 
 	upgradeBuf, err := httputil.DumpRequest(req, false)
 	if err != nil {
-		log.Errorf("DumpRequest: %v\n", err)
+		logger.Errorf("DumpRequest: %v\n", err)
 		res.WriteHeader(502)
 		return
 	}
@@ -48,7 +48,7 @@ func (s *webSocket) wss(res http.ResponseWriter, req *http.Request) {
 
 	host := req.Host
 	if !strings.Contains(host, ":") {
-		host = host + ":443"
+		host += ":443"
 	}
 	conn, err := tls.Dial("tcp", host, nil)
 	if err != nil {
@@ -59,8 +59,8 @@ func (s *webSocket) wss(res http.ResponseWriter, req *http.Request) {
 
 	_, err = conn.Write(upgradeBuf)
 	if err != nil {
-		log.Errorf("wss upgrade: %v\n", err)
+		logger.Errorf("wss upgrade: %v\n", err)
 		return
 	}
-	transfer(log, conn, cconn)
+	transfer(logger, conn, cconn)
 }

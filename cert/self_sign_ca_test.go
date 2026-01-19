@@ -2,7 +2,7 @@ package cert
 
 import (
 	"bytes"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -18,11 +18,11 @@ func TestGetStorePath(t *testing.T) {
 }
 
 func TestNewCA(t *testing.T) {
-	caApi, err := NewSelfSignCA("")
+	caAPI, err := NewSelfSignCA("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ca := caApi.(*SelfSignCA)
+	ca := caAPI.(*SelfSignCA)
 
 	data := make([]byte, 0)
 	buf := bytes.NewBuffer(data)
@@ -32,7 +32,7 @@ func TestNewCA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fileContent, err := ioutil.ReadFile(ca.caFile())
+	fileContent, err := os.ReadFile(ca.caFile())
 	if err != nil {
 		t.Fatal(err)
 	}

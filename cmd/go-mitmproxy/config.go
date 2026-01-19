@@ -4,8 +4,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
 func loadConfigFromFile(filename string) (*Config, error) {
@@ -37,7 +38,7 @@ func loadConfigFromCli() *Config {
 	flag.StringVar(&config.filename, "f", "", "read config from the filename")
 
 	flag.StringVar(&config.ProxyAuth, "proxyauth", "", `enable proxy authentication. Format: "username:pass", "user1:pass1|user2:pass2","any" to accept any user/pass combination`)
-	flag.Parse()
+	flag.Parse() //revive:disable-line:deep-exit -- ok for cmd/*
 
 	return config
 }
@@ -107,7 +108,7 @@ func loadConfig() *Config {
 	return mergeConfigs(fileConfig, cliConfig)
 }
 
-// arrayValue implements the flag.Value interface
+// arrayValue implements the flag.Value interface.
 type arrayValue []string
 
 func (a *arrayValue) String() string {

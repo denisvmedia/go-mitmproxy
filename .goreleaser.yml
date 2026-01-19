@@ -1,33 +1,83 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-before:
-  hooks:
-    # You may remove this if you don't use go modules.
-    # - go mod tidy
-    # you may remove this if you don't need go generate
-    # - go generate ./...
+version: 2
+
+project_name: go-mitmproxy
+
 builds:
-  - env:
+  - binary: go-mitmproxy
+    main: ./cmd/go-mitmproxy/
+    flags:
+      - -trimpath
+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    env:
       - CGO_ENABLED=0
-    main: ./cmd/go-mitmproxy
     goos:
-      - linux
-      - windows
       - darwin
+      - windows
+      - linux
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - '386'
+    goarm:
+      - '6'
+      - '7'
+    ignore:
+      - goos: darwin
+        goarch: '386'
+      # Deprecated in go1.25, Removed in go1.26
+      # https://go.dev/doc/go1.25#windows
+      - goos: windows
+        goarch: arm
+
 archives:
-  - name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-checksum:
-  name_template: 'checksums.txt'
+  - formats: [ 'tar.gz' ]
+    wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        formats: [ 'zip' ]
+    name_template: '{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    files:
+      - LICENSE
+      - README.md
+
 snapshot:
-  name_template: '{{ incpatch .Version }}-next'
+  version_template: SNAPSHOT-{{ .Commit }}
+
+checksum:
+  disable: false
+  name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
+
 changelog:
+  sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - '(?i)^docs?:'
+      - '(?i)^docs\([^:]+\):'
+      - '(?i)^docs\[[^:]+\]:'
+      - '^tests?:'
+      - '(?i)^dev:'
+      - '(?i)^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: denisvmedia
+    name: go-mitmproxy
+  header: |
+    ## go-mitmproxy {{ .Version }}
+    
+    `go-mitmproxy` is a Golang implementation of [mitmproxy](https://mitmproxy.org/) that supports man-in-the-middle attacks and parsing, monitoring, and tampering with HTTP/HTTPS traffic.
+    
+    ### Installation
+    
+    ```bash
+    go install github.com/denisvmedia/go-mitmproxy/cmd/go-mitmproxy@{{ .Tag }}
+    ```
+
+source:
+  enabled: true
+  name_template: '{{ .ProjectName }}-{{ .Version }}-source'
+

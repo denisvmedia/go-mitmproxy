@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 // message:
@@ -69,7 +70,7 @@ func validMessageType(t byte) bool {
 }
 
 type message interface {
-	bytes() []byte
+	toBytes() []byte
 }
 
 type messageFlow struct {
@@ -82,16 +83,16 @@ type messageFlow struct {
 func newMessageFlow(mType messageType, f *proxy.Flow) (*messageFlow, error) {
 	var content []byte
 	var err error
-	id := f.Id
+	id := f.ID
 
 	switch mType {
 	case messageTypeConn:
-		id = f.ConnContext.Id()
+		id = f.ConnContext.ID()
 		content, err = json.Marshal(f.ConnContext)
 	case messageTypeRequest:
-		m := make(map[string]interface{})
+		m := make(map[string]any)
 		m["request"] = f.Request
-		m["connId"] = f.ConnContext.Id().String()
+		m["connId"] = f.ConnContext.ID().String()
 		content, err = json.Marshal(m)
 	case messageTypeRequestBody:
 		content, err = f.Request.DecodedBody()
@@ -124,15 +125,15 @@ func newMessageFlow(mType messageType, f *proxy.Flow) (*messageFlow, error) {
 
 func newMessageConnClose(connCtx *proxy.ConnContext) *messageFlow {
 	var buf bytes.Buffer
-	binary.Write(&buf, binary.BigEndian, connCtx.FlowCount.Load())
+	_ = binary.Write(&buf, binary.BigEndian, connCtx.FlowCount.Load())
 	return &messageFlow{
 		mType:   messageTypeConnClose,
-		id:      connCtx.Id(),
+		id:      connCtx.ID(),
 		content: buf.Bytes(),
 	}
 }
 
-func (m *messageFlow) bytes() []byte {
+func (m *messageFlow) toBytes() []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	buf.WriteByte(byte(messageVersion))
 	buf.WriteByte(byte(m.mType))
@@ -188,7 +189,8 @@ func parseMessageEdit(data []byte) *messageEdit {
 	}
 	bodyContent := data[42+hl+4:]
 
-	if mType == messageTypeChangeRequest {
+	switch mType {
+	case messageTypeChangeRequest:
 		req := new(proxy.Request)
 		err := json.Unmarshal(headerContent, req)
 		if err != nil {
@@ -196,7 +198,7 @@ func parseMessageEdit(data []byte) *messageEdit {
 		}
 		req.Body = bodyContent
 		msg.request = req
-	} else if mType == messageTypeChangeResponse {
+	case messageTypeChangeResponse:
 		res := new(proxy.Response)
 		err := json.Unmarshal(headerContent, res)
 		if err != nil {
@@ -204,20 +206,21 @@ func parseMessageEdit(data []byte) *messageEdit {
 		}
 		res.Body = bodyContent
 		msg.response = res
-	} else {
+	default:
 		return nil
 	}
 
 	return msg
 }
 
-func (m *messageEdit) bytes() []byte {
+func (m *messageEdit) toBytes() []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	buf.WriteByte(byte(messageVersion))
 	buf.WriteByte(byte(m.mType))
 	buf.WriteString(m.id.String()) // len: 36
 
-	if m.mType == messageTypeChangeRequest {
+	switch m.mType {
+	case messageTypeChangeRequest:
 		headerContent, err := json.Marshal(m.request)
 		if err != nil {
 			panic(err)
@@ -231,7 +234,7 @@ func (m *messageEdit) bytes() []byte {
 		binary.BigEndian.PutUint32(bl, (uint32)(len(bodyContent)))
 		buf.Write(bl)
 		buf.Write(bodyContent)
-	} else if m.mType == messageTypeChangeResponse {
+	case messageTypeChangeResponse:
 		headerContent, err := json.Marshal(m.response)
 		if err != nil {
 			panic(err)
@@ -269,7 +272,7 @@ func parseMessageMeta(data []byte) *messageMeta {
 	}
 }
 
-func (m *messageMeta) bytes() []byte {
+func (m *messageMeta) toBytes() []byte {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	buf.WriteByte(byte(messageVersion))
 	buf.WriteByte(byte(m.mType))
@@ -298,11 +301,12 @@ func parseMessage(data []byte) message {
 
 	mType := (messageType)(data[1])
 
-	if mType == messageTypeChangeRequest || mType == messageTypeChangeResponse || mType == messageTypeDropRequest || mType == messageTypeDropResponse {
+	switch mType {
+	case messageTypeChangeRequest, messageTypeChangeResponse, messageTypeDropRequest, messageTypeDropResponse:
 		return parseMessageEdit(data)
-	} else if mType == messageTypeChangeBreakPointRules {
+	case messageTypeChangeBreakPointRules:
 		return parseMessageMeta(data)
-	} else {
+	default:
 		log.Warnf("invalid message type %v", mType)
 		return nil
 	}

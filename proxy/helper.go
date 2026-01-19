@@ -21,31 +21,29 @@ var normalErrMsgs []string = []string{
 	"use of closed network connection",
 }
 
-// Only print unexpected error messages
-func logErr(log *log.Entry, err error) (loged bool) {
+// Only print unexpected error messages.
+func logErr(logger *log.Entry, err error) {
 	msg := err.Error()
 
 	for _, str := range normalErrMsgs {
 		if strings.Contains(msg, str) {
-			log.Debug(err)
+			logger.Debug(err)
 			return
 		}
 	}
 
-	log.Error(err)
-	loged = true
-	return
+	logger.Error(err)
 }
 
-// Transfer traffic
-func transfer(log *log.Entry, server, client io.ReadWriteCloser) {
+// Transfer traffic.
+func transfer(logger *log.Entry, server, client io.ReadWriteCloser) {
 	done := make(chan struct{})
 	defer close(done)
 
 	errChan := make(chan error)
 	go func() {
 		_, err := io.Copy(server, client)
-		log.Debugln("client copy end", err)
+		logger.Debugln("client copy end", err)
 		client.Close()
 		select {
 		case <-done:
@@ -56,12 +54,12 @@ func transfer(log *log.Entry, server, client io.ReadWriteCloser) {
 	}()
 	go func() {
 		_, err := io.Copy(client, server)
-		log.Debugln("server copy end", err)
+		logger.Debugln("server copy end", err)
 		server.Close()
 
 		if clientConn, ok := client.(*wrapClientConn); ok {
 			err := clientConn.Conn.(*net.TCPConn).CloseRead()
-			log.Debugln("clientConn.Conn.(*net.TCPConn).CloseRead()", err)
+			logger.Debugln("clientConn.Conn.(*net.TCPConn).CloseRead()", err)
 		}
 
 		select {
@@ -74,15 +72,15 @@ func transfer(log *log.Entry, server, client io.ReadWriteCloser) {
 
 	for i := 0; i < 2; i++ {
 		if err := <-errChan; err != nil {
-			logErr(log, err)
+			logErr(logger, err)
 			return // If there's an error, return immediately
 		}
 	}
 }
 
-func httpError(w http.ResponseWriter, error string, code int) {
+func httpError(w http.ResponseWriter, errMsg string, code int) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Proxy-Authenticate", `Basic realm="proxy"`) // Indicates that the proxy server requires client credentials
 	w.WriteHeader(code)
-	fmt.Fprintln(w, error)
+	fmt.Fprintln(w, errMsg)
 }

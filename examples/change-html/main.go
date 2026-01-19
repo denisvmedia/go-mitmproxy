@@ -5,17 +5,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 var titleRegexp = regexp.MustCompile("(<title>)(.*?)(</title>)")
 
-type ChangeHtml struct {
+type ChangeHTML struct {
 	proxy.BaseAddon
 }
 
-func (c *ChangeHtml) Response(f *proxy.Flow) {
+func (*ChangeHTML) Response(f *proxy.Flow) {
 	contentType := f.Response.Header.Get("Content-Type")
 	if !strings.Contains(contentType, "text/html") {
 		return
@@ -38,7 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	p.AddAddon(&ChangeHtml{})
+	p.AddAddon(&ChangeHTML{})
 
 	log.Fatal(p.Start())
 }

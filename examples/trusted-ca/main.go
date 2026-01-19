@@ -4,8 +4,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 func main() {
@@ -33,11 +34,11 @@ type YourAddOn struct {
 	proxy.BaseAddon
 }
 
-func (m *YourAddOn) ClientConnected(client *proxy.ClientConn) {
+func (*YourAddOn) ClientConnected(client *proxy.ClientConn) {
 	client.UpstreamCert = false // don't connect to upstream server
 }
 
-func (m *YourAddOn) Request(flow *proxy.Flow) {
+func (*YourAddOn) Request(flow *proxy.Flow) {
 	flow.Done()
 	resp := &proxy.Response{
 		StatusCode: 200,

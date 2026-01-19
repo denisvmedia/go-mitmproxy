@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
-// wrap tcpListener for remote client
+// wrap tcpListener for remote client.
 type wrapListener struct {
 	net.Listener
 	proxy *Proxy
@@ -36,7 +37,7 @@ func (l *wrapListener) Accept() (net.Conn, error) {
 	return wc, nil
 }
 
-// wrap tcpConn for remote client
+// wrap tcpConn for remote client.
 type wrapClientConn struct {
 	net.Conn
 	r       *bufio.Reader
@@ -90,7 +91,7 @@ func (c *wrapClientConn) Close() error {
 	return c.closeErr
 }
 
-// wrap tcpConn for remote server
+// wrap tcpConn for remote server.
 type wrapServerConn struct {
 	net.Conn
 	proxy   *Proxy
@@ -117,13 +118,11 @@ func (c *wrapServerConn) Close() error {
 		addon.ServerDisconnected(c.connCtx)
 	}
 
-	if !c.connCtx.ClientConn.Tls {
-		c.connCtx.ClientConn.Conn.(*wrapClientConn).Conn.(*net.TCPConn).CloseRead()
-	} else {
+	if !c.connCtx.ClientConn.TLS {
+		_ = c.connCtx.ClientConn.Conn.(*wrapClientConn).Conn.(*net.TCPConn).CloseRead()
+	} else if !c.connCtx.closeAfterResponse {
 		// if keep-alive connection close
-		if !c.connCtx.closeAfterResponse {
-			c.connCtx.ClientConn.Conn.Close()
-		}
+		c.connCtx.ClientConn.Conn.Close()
 	}
 
 	return c.closeErr
@@ -175,7 +174,7 @@ func (e *entry) shutdown(ctx context.Context) error {
 func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	proxy := e.proxy
 
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.entry.ServeHTTP",
 		"host": req.Host,
 	})
@@ -183,7 +182,7 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if e.proxy.authProxy != nil {
 		b, err := e.proxy.authProxy(res, req)
 		if !b {
-			log.Errorf("Proxy authentication failed: %s", err.Error())
+			logger.Errorf("Proxy authentication failed: %s", err.Error())
 			httpError(res, "", http.StatusProxyAuthRequired)
 			return
 		}
@@ -202,21 +201,21 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		if res, ok := res.(*helper.ResponseCheck); ok {
 			if !res.Wrote {
 				res.WriteHeader(400)
-				io.WriteString(res, "This is a proxy server, direct requests are not allowed")
+				_, _ = io.WriteString(res, "This is a proxy server, direct requests are not allowed")
 			}
 		}
 		return
 	}
 
 	// http proxy
-	proxy.attacker.initHttpDialFn(req)
+	proxy.attacker.initHTTPDialFn(req)
 	proxy.attacker.attack(res, req)
 }
 
 func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	proxy := e.proxy
 
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.entry.handleConnect",
 		"host": req.Host,
 	})
@@ -224,7 +223,11 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	shouldIntercept := proxy.shouldIntercept == nil || proxy.shouldIntercept(req)
 	f := newFlow()
 	f.Request = newRequest(req)
-	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
+	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	if !ok {
+		panic("failed to get ConnContext from request context")
+	}
+	f.ConnContext = connCtx
 	f.ConnContext.Intercept = shouldIntercept
 	defer f.finish()
 
@@ -234,7 +237,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if !shouldIntercept {
-		log.Debugf("begin transpond %v", req.Host)
+		logger.Debugf("begin transpond %v", req.Host)
 		e.directTransfer(res, req, f)
 		return
 	}
@@ -244,7 +247,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Debugf("begin intercept %v", req.Host)
+	logger.Debugf("begin intercept %v", req.Host)
 	e.httpsDialLazyAttack(res, req, f)
 }
 
@@ -275,14 +278,14 @@ func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn,
 
 func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.entry.directTransfer",
 		"host": req.Host,
 	})
 
 	conn, err := proxy.getUpstreamConn(req.Context(), req)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		res.WriteHeader(502)
 		return
 	}
@@ -290,24 +293,24 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 	defer cconn.Close()
 
-	transfer(log, conn, cconn)
+	transfer(logger, conn, cconn)
 }
 
 func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.entry.httpsDialFirstAttack",
 		"host": req.Host,
 	})
 
 	conn, err := proxy.attacker.httpsDial(req.Context(), req)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		res.WriteHeader(502)
 		return
 	}
@@ -315,7 +318,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
 		conn.Close()
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 
@@ -323,57 +326,57 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 	if err != nil {
 		cconn.Close()
 		conn.Close()
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
-	if !helper.IsTls(peek) {
+	if !helper.IsTLS(peek) {
 		// todo: http, ws
-		transfer(log, conn, cconn)
+		transfer(logger, conn, cconn)
 		cconn.Close()
 		conn.Close()
 		return
 	}
 
 	// is tls
-	f.ConnContext.ClientConn.Tls = true
-	proxy.attacker.httpsTlsDial(req.Context(), cconn, conn)
+	f.ConnContext.ClientConn.TLS = true
+	proxy.attacker.httpsTLSDial(req.Context(), cconn, conn)
 }
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	log := log.WithFields(log.Fields{
+	logger := log.WithFields(log.Fields{
 		"in":   "Proxy.entry.httpsDialLazyAttack",
 		"host": req.Host,
 	})
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 
 	peek, err := cconn.(*wrapClientConn).Peek(3)
 	if err != nil {
 		cconn.Close()
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 
-	if !helper.IsTls(peek) {
+	if !helper.IsTLS(peek) {
 		// todo: http, ws
 		conn, err := proxy.attacker.httpsDial(req.Context(), req)
 		if err != nil {
 			cconn.Close()
-			log.Error(err)
+			logger.Error(err)
 			return
 		}
-		transfer(log, conn, cconn)
+		transfer(logger, conn, cconn)
 		conn.Close()
 		cconn.Close()
 		return
 	}
 
 	// is tls
-	f.ConnContext.ClientConn.Tls = true
+	f.ConnContext.ClientConn.TLS = true
 	proxy.attacker.httpsLazyAttack(req.Context(), cconn, req)
 }

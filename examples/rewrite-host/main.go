@@ -1,20 +1,21 @@
 package main
 
 import (
-	"github.com/denisvmedia/go-mitmproxy/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 type RewriteHost struct {
 	proxy.BaseAddon
 }
 
-func (a *RewriteHost) ClientConnected(client *proxy.ClientConn) {
+func (*RewriteHost) ClientConnected(client *proxy.ClientConn) {
 	// necessary
 	client.UpstreamCert = false
 }
 
-func (a *RewriteHost) Requestheaders(f *proxy.Flow) {
+func (*RewriteHost) Requestheaders(f *proxy.Flow) {
 	log.Printf("Host: %v, Method: %v, Scheme: %v", f.Request.URL.Host, f.Request.Method, f.Request.URL.Scheme)
 	f.Request.URL.Host = "www.baidu.com"
 	f.Request.URL.Scheme = "http"
