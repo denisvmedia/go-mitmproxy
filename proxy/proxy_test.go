@@ -276,8 +276,10 @@ func TestProxy(t *testing.T) {
 			if err == nil {
 				t.Fatal("should have error")
 			}
-			if !strings.Contains(err.Error(), "certificate is not trusted") {
-				t.Fatal("should get not trusted error, but got", err.Error())
+			msg := err.Error()
+			if !strings.Contains(msg, "certificate is not trusted") &&
+				!strings.Contains(msg, "certificate signed by unknown authority") {
+				t.Fatal("should get not trusted error, but got", msg)
 			}
 		})
 
