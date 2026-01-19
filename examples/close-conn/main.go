@@ -1,7 +1,7 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -40,11 +40,14 @@ func main() {
 
 	p, err := proxy.NewProxy(opts)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create proxy", "error", err)
+		return
 	}
 
 	p.AddAddon(&CloseConn{})
 	p.AddAddon(&proxy.LogAddon{})
 
-	log.Fatal(p.Start())
+	if err := p.Start(); err != nil {
+		slog.Error("proxy exited", "error", err)
+	}
 }

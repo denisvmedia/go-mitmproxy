@@ -2,12 +2,10 @@ package main
 
 import (
 	"fmt"
-	stdlog "log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/addon"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
@@ -42,19 +40,18 @@ type Config struct {
 func main() {
 	config := loadConfig()
 
+	// Configure global slog logger.
+	level := slog.LevelInfo
+	addSource := false
 	if config.Debug > 0 {
-		stdlog.SetFlags(stdlog.LstdFlags | stdlog.Lshortfile)
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
+		level = slog.LevelDebug
+		addSource = true // include file:line in debug mode only
 	}
-	if config.Debug == 2 {
-		log.SetReportCaller(true)
-	}
-	log.SetOutput(os.Stdout)
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp: true,
-	})
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     level,
+		AddSource: addSource,
+	}))
+	slog.SetDefault(logger)
 
 	opts := &proxy.Options{
 		Debug:             config.Debug,
@@ -68,7 +65,8 @@ func main() {
 
 	p, err := proxy.NewProxy(opts)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create proxy", "error", err)
+		os.Exit(1)
 	}
 
 	if config.version {
@@ -76,7 +74,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.Infof("go-mitmproxy version %v\n", p.Version)
+	slog.Info("go-mitmproxy started", slog.String("version", p.Version))
 
 	if len(config.IgnoreHosts) > 0 {
 		p.SetShouldInterceptRule(func(req *http.Request) bool {
@@ -91,11 +89,11 @@ func main() {
 
 	if !config.UpstreamCert {
 		p.AddAddon(proxy.NewUpstreamCertAddon(false))
-		log.Infoln("UpstreamCert config false")
+		slog.Info("UpstreamCert config false")
 	}
 
 	if config.ProxyAuth != "" && strings.ToLower(config.ProxyAuth) != "any" {
-		log.Infoln("Enable entry authentication")
+		slog.Info("Enable entry authentication")
 		auth := NewDefaultBasicAuth(config.ProxyAuth)
 		p.SetAuthProxy(auth.EntryAuth)
 	}
@@ -103,7 +101,7 @@ func main() {
 	if config.LogFile != "" {
 		// Use instance logger with file output
 		p.AddAddon(proxy.NewInstanceLogAddonWithFile(config.Addr, "", config.LogFile))
-		log.Infof("Logging to file: %s", config.LogFile)
+		slog.Info("Logging to file", slog.String("file", config.LogFile))
 	} else {
 		// Use default logger
 		p.AddAddon(&proxy.LogAddon{})
@@ -113,7 +111,7 @@ func main() {
 	if config.MapRemote != "" {
 		mapRemote, err := addon.NewMapRemoteFromFile(config.MapRemote)
 		if err != nil {
-			log.Warnf("load map remote error: %v", err)
+			slog.Warn("load map remote error", "error", err)
 		} else {
 			p.AddAddon(mapRemote)
 		}
@@ -122,7 +120,7 @@ func main() {
 	if config.MapLocal != "" {
 		mapLocal, err := addon.NewMapLocalFromFile(config.MapLocal)
 		if err != nil {
-			log.Warnf("load map local error: %v", err)
+			slog.Warn("load map local error", "error", err)
 		} else {
 			p.AddAddon(mapLocal)
 		}
@@ -133,5 +131,8 @@ func main() {
 		p.AddAddon(dumper)
 	}
 
-	log.Fatal(p.Start())
+	if err := p.Start(); err != nil {
+		slog.Error("proxy exited", "error", err)
+		os.Exit(1)
+	}
 }

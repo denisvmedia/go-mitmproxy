@@ -2,11 +2,11 @@ package proxy
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type InstanceLogger struct {
@@ -14,8 +14,7 @@ type InstanceLogger struct {
 	InstanceName string
 	Port         string
 	LogFilePath  string
-	logger       *log.Entry
-	fileLogger   *log.Logger
+	logger       *slog.Logger
 }
 
 // NewInstanceLogger creates a logger with instance identification.
@@ -47,90 +46,34 @@ func NewInstanceLoggerWithFile(addr, instanceName, logFilePath string) *Instance
 	if logFilePath != "" {
 		file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to open log file: %s", logFilePath)
+			slog.Error("Failed to open log file", "file", logFilePath, "error", err)
 		}
 		if err == nil {
-			// Create a dedicated logger for file output
-			il.fileLogger = log.New()
-			il.fileLogger.SetOutput(file)
-			il.fileLogger.SetFormatter(&log.JSONFormatter{})
-
-			// Use the file logger as base
-			il.logger = il.fileLogger.WithFields(log.Fields{
-				"instance_id":   il.InstanceID,
-				"instance_name": il.InstanceName,
-				"port":          il.Port,
-			})
+			il.logger = slog.New(slog.NewJSONHandler(file, &slog.HandlerOptions{})).With(
+				"instance_id", il.InstanceID,
+				"instance_name", il.InstanceName,
+				"port", il.Port,
+			)
 			return il
 		}
 	}
 
-	// Default: use standard logger with persistent fields
-	il.logger = log.WithFields(log.Fields{
-		"instance_id":   il.InstanceID,
-		"instance_name": il.InstanceName,
-		"port":          il.Port,
-	})
+	// Default: use global slog logger with bound fields
+	il.logger = slog.Default().With(
+		"instance_id", il.InstanceID,
+		"instance_name", il.InstanceName,
+		"port", il.Port,
+	)
 
 	return il
 }
 
 // WithFields adds additional fields to the logger.
-func (il *InstanceLogger) WithFields(fields log.Fields) *log.Entry {
-	return il.logger.WithFields(fields)
+func (il *InstanceLogger) WithFields(args ...any) *slog.Logger {
+	return il.logger.With(args...)
 }
 
-// Info logs at info level.
-func (il *InstanceLogger) Info(args ...any) {
-	il.logger.Info(args...)
-}
-
-// Infof logs formatted at info level.
-func (il *InstanceLogger) Infof(format string, args ...any) {
-	il.logger.Infof(format, args...)
-}
-
-// Debug logs at debug level.
-func (il *InstanceLogger) Debug(args ...any) {
-	il.logger.Debug(args...)
-}
-
-// Debugf logs formatted at debug level.
-func (il *InstanceLogger) Debugf(format string, args ...any) {
-	il.logger.Debugf(format, args...)
-}
-
-// Error logs at error level.
-func (il *InstanceLogger) Error(args ...any) {
-	il.logger.Error(args...)
-}
-
-// Errorf logs formatted at error level.
-func (il *InstanceLogger) Errorf(format string, args ...any) {
-	il.logger.Errorf(format, args...)
-}
-
-// Warn logs at warn level.
-func (il *InstanceLogger) Warn(args ...any) {
-	il.logger.Warn(args...)
-}
-
-// Warnf logs formatted at warn level.
-func (il *InstanceLogger) Warnf(format string, args ...any) {
-	il.logger.Warnf(format, args...)
-}
-
-// Fatal logs at fatal level.
-func (il *InstanceLogger) Fatal(args ...any) {
-	il.logger.Fatal(args...)
-}
-
-// Fatalf logs formatted at fatal level.
-func (il *InstanceLogger) Fatalf(format string, args ...any) {
-	il.logger.Fatalf(format, args...)
-}
-
-// GetEntry returns the underlying logrus entry.
-func (il *InstanceLogger) GetEntry() *log.Entry {
+// GetLogger returns the underlying slog logger.
+func (il *InstanceLogger) GetLogger() *slog.Logger {
 	return il.logger
 }

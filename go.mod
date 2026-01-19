@@ -9,7 +9,6 @@ require (
 	github.com/klauspost/compress v1.18.3
 	github.com/samber/lo v1.52.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/sirupsen/logrus v1.9.4
 	github.com/tidwall/match v1.2.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/net v0.49.0

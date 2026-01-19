@@ -2,10 +2,9 @@ package helper
 
 import (
 	"io"
+	"log/slog"
 	"os"
 	"sync"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // Wireshark HTTPS parsing configuration.
@@ -21,7 +20,7 @@ func GetTLSKeyLogWriter() io.Writer {
 
 		writer, err := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
-			log.Debugf("getTlsKeyLogWriter OpenFile error: %v", err)
+			slog.Debug("getTlsKeyLogWriter OpenFile error", "error", err)
 			return
 		}
 

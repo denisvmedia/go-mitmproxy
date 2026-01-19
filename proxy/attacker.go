@@ -5,11 +5,11 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
@@ -303,10 +303,10 @@ func (a *attacker) httpsDial(ctx context.Context, req *http.Request) (net.Conn, 
 
 func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.attacker.httpsTlsDial",
-		"host": connCtx.ClientConn.Conn.RemoteAddr().String(),
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.attacker.httpsTlsDial",
+		"host", connCtx.ClientConn.Conn.RemoteAddr().String(),
+	)
 
 	var clientHello *tls.ClientHelloInfo
 	clientHelloChan := make(chan *tls.ClientHelloInfo)
@@ -355,7 +355,7 @@ func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	case err := <-errChan1:
 		cconn.Close()
 		conn.Close()
-		log.Error(err)
+		logger.Error("client handshake failed", "error", err)
 		return
 	case clientHello = <-clientHelloChan:
 	}
@@ -365,7 +365,7 @@ func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 		cconn.Close()
 		conn.Close()
 		errChan2 <- err
-		logger.Error(err)
+		logger.Error("server TLS handshake failed", "error", err)
 		return
 	}
 	serverTLSStateChan <- connCtx.ServerConn.tlsState
@@ -375,7 +375,7 @@ func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 	case err := <-errChan1:
 		cconn.Close()
 		conn.Close()
-		log.Error(err)
+		logger.Error("client handshake failed", "error", err)
 		return
 	case <-clientHandshakeDoneChan:
 	}
@@ -386,10 +386,10 @@ func (a *attacker) httpsTLSDial(ctx context.Context, cconn, conn net.Conn) {
 
 func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *http.Request) {
 	connCtx := cconn.(*wrapClientConn).connCtx
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.attacker.httpsLazyAttack",
-		"host": connCtx.ClientConn.Conn.RemoteAddr().String(),
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.attacker.httpsLazyAttack",
+		"host", connCtx.ClientConn.Conn.RemoteAddr().String(),
+	)
 
 	clientTLSConn := tls.Server(cconn, &tls.Config{
 		SessionTicketsDisabled: true, // Set this to true to ensure GetConfigForClient is called every time
@@ -408,7 +408,7 @@ func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *htt
 	})
 	if err := clientTLSConn.HandshakeContext(ctx); err != nil {
 		cconn.Close()
-		logger.Error(err)
+		logger.Error("client handshake failed", "error", err)
 		return
 	}
 
@@ -417,11 +417,11 @@ func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *htt
 	a.serveConn(clientTLSConn, connCtx)
 }
 
-func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Reader, rawReqURLHost, rawReqURLScheme string, res http.ResponseWriter, logger *log.Entry) (*http.Response, error) {
+func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Reader, rawReqURLHost, rawReqURLScheme string, res http.ResponseWriter, logger *slog.Logger) (*http.Response, error) {
 	proxyReqCtx := context.WithValue(req.Context(), proxyReqCtxKey, req)
 	proxyReq, err := http.NewRequestWithContext(proxyReqCtx, f.Request.Method, f.Request.URL.String(), reqBody)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("failed to create proxy request", "error", err)
 		res.WriteHeader(502)
 		return nil, err
 	}
@@ -454,7 +454,7 @@ func (a *attacker) executeProxyRequest(f *Flow, req *http.Request, reqBody io.Re
 	if f.ConnContext.ServerConn == nil && f.ConnContext.dialFn != nil {
 		if err := f.ConnContext.dialFn(req.Context()); err != nil {
 			// Check for authentication failure
-			logger.Error(err)
+			logger.Error("dial upstream failed", "error", err)
 			if strings.Contains(err.Error(), "Proxy Authentication Required") {
 				httpError(res, "", http.StatusProxyAuthRequired)
 				return nil, err
@@ -484,7 +484,7 @@ func (*attacker) handleResponseHeadersAddons(f *Flow, proxy *Proxy) bool {
 	return false
 }
 
-func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy, logger *log.Entry) (io.Reader, bool) {
+func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy, logger *slog.Logger) (io.Reader, bool) {
 	var resBody io.Reader = proxyRes.Body
 	if f.Stream {
 		return resBody, true
@@ -493,12 +493,12 @@ func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy
 	resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, proxy.Opts.StreamLargeBodies)
 	resBody = r
 	if err != nil {
-		logger.Error(err)
+		logger.Error("failed to buffer response body", "error", err)
 		return nil, false
 	}
 
 	if resBuf == nil {
-		logger.Warnf("response body size >= %v\n", proxy.Opts.StreamLargeBodies)
+		logger.Warn("response body too large, switching to stream", "threshold", proxy.Opts.StreamLargeBodies)
 		f.Stream = true
 		return resBody, true
 	}
@@ -513,7 +513,7 @@ func (*attacker) readResponseBody(f *Flow, proxyRes *http.Response, proxy *Proxy
 	return resBody, true
 }
 
-func (*attacker) replyToClient(res http.ResponseWriter, response *Response, body io.Reader, logger *log.Entry) {
+func (*attacker) replyToClient(res http.ResponseWriter, response *Response, body io.Reader, logger *slog.Logger) {
 	if response.Header != nil {
 		for key, value := range response.Header {
 			for _, v := range value {
@@ -556,7 +556,7 @@ func (*attacker) handleRequestAddons(f *Flow, proxy *Proxy) bool {
 	return false
 }
 
-func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logger *log.Entry) (io.Reader, bool) {
+func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logger *slog.Logger) (io.Reader, bool) {
 	var reqBody io.Reader = req.Body
 	if f.Stream {
 		return reqBody, true
@@ -565,12 +565,12 @@ func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logge
 	reqBuf, r, err := helper.ReaderToBuffer(req.Body, proxy.Opts.StreamLargeBodies)
 	reqBody = r
 	if err != nil {
-		logger.Error(err)
+		logger.Error("failed to buffer request body", "error", err)
 		return nil, false
 	}
 
 	if reqBuf == nil {
-		logger.Warnf("request body size >= %v\n", proxy.Opts.StreamLargeBodies)
+		logger.Warn("request body too large, switching to stream", "threshold", proxy.Opts.StreamLargeBodies)
 		f.Stream = true
 		return reqBody, true
 	}
@@ -590,16 +590,16 @@ func (*attacker) readRequestBody(f *Flow, req *http.Request, proxy *Proxy, logge
 func (a *attacker) attack(res http.ResponseWriter, req *http.Request) {
 	proxy := a.proxy
 
-	logger := log.WithFields(log.Fields{
-		"in":     "Proxy.attacker.attack",
-		"url":    req.URL,
-		"method": req.Method,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.attacker.attack",
+		"url", req.URL,
+		"method", req.Method,
+	)
 
 	// when addons panic
 	defer func() {
 		if err := recover(); err != nil {
-			logger.Warnf("Recovered: %v\n", err)
+			logger.Warn("Recovered from panic in attacker.attack", "error", err)
 		}
 	}()
 

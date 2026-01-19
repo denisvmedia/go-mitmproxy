@@ -3,11 +3,10 @@ package proxy
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var normalErrMsgs []string = []string{
@@ -22,28 +21,28 @@ var normalErrMsgs []string = []string{
 }
 
 // Only print unexpected error messages.
-func logErr(logger *log.Entry, err error) {
+func logErr(logger *slog.Logger, err error) {
 	msg := err.Error()
 
 	for _, str := range normalErrMsgs {
 		if strings.Contains(msg, str) {
-			logger.Debug(err)
+			logger.Debug("normal error", "error", err)
 			return
 		}
 	}
 
-	logger.Error(err)
+	logger.Error("unexpected error", "error", err)
 }
 
 // Transfer traffic.
-func transfer(logger *log.Entry, server, client io.ReadWriteCloser) {
+func transfer(logger *slog.Logger, server, client io.ReadWriteCloser) {
 	done := make(chan struct{})
 	defer close(done)
 
 	errChan := make(chan error)
 	go func() {
 		_, err := io.Copy(server, client)
-		logger.Debugln("client copy end", err)
+		logger.Debug("client copy end", "error", err)
 		client.Close()
 		select {
 		case <-done:
@@ -54,12 +53,12 @@ func transfer(logger *log.Entry, server, client io.ReadWriteCloser) {
 	}()
 	go func() {
 		_, err := io.Copy(client, server)
-		logger.Debugln("server copy end", err)
+		logger.Debug("server copy end", "error", err)
 		server.Close()
 
 		if clientConn, ok := client.(*wrapClientConn); ok {
 			err := clientConn.Conn.(*net.TCPConn).CloseRead()
-			logger.Debugln("clientConn.Conn.(*net.TCPConn).CloseRead()", err)
+			logger.Debug("clientConn.Conn.(*net.TCPConn).CloseRead()", "error", err)
 		}
 
 		select {

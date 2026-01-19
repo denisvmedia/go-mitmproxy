@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"unicode"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -58,7 +57,7 @@ func (d *Dumper) dump(f *proxy.Flow) {
 
 	err := f.Request.Header.WriteSubset(buf, nil)
 	if err != nil {
-		log.Error(err)
+		slog.Error("failed to write request headers", "error", err)
 	}
 	buf.WriteString("\r\n")
 
@@ -71,7 +70,7 @@ func (d *Dumper) dump(f *proxy.Flow) {
 		fmt.Fprintf(buf, "%v %v %v\r\n", f.Request.Proto, f.Response.StatusCode, http.StatusText(f.Response.StatusCode))
 		err = f.Response.Header.WriteSubset(buf, nil)
 		if err != nil {
-			log.Error(err)
+			slog.Error("failed to write response headers", "error", err)
 		}
 		buf.WriteString("\r\n")
 
@@ -88,7 +87,7 @@ func (d *Dumper) dump(f *proxy.Flow) {
 
 	_, err = d.out.Write(buf.Bytes())
 	if err != nil {
-		log.Error(err)
+		slog.Error("failed to write dump output", "error", err)
 	}
 }
 

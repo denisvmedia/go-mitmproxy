@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"net/http"
+	"os"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type DefaultBasicAuth struct {
@@ -21,7 +21,8 @@ func NewDefaultBasicAuth(auth string) *DefaultBasicAuth {
 	for _, e := range strings.Split(auth, "|") {
 		n := strings.SplitN(e, ":", 2)
 		if len(n) != 2 {
-			log.Fatalf("Invalid proxy auth format: %s, expected user:pass", e) //revive:disable-line:deep-exit -- ok for cmd/*
+			slog.Error("invalid proxy auth format", slog.String("value", e))
+			os.Exit(1) //revive:disable-line:deep-exit -- ok for cmd/*
 		}
 		basicAuth.Auth[n[0]] = n[1]
 	}
@@ -49,7 +50,7 @@ func (usr *DefaultBasicAuth) parseRequestAuth(proxyAuth string) bool {
 	encodedAuth := strings.TrimPrefix(proxyAuth, "Basic ")
 	decodedAuth, err := base64.StdEncoding.DecodeString(encodedAuth)
 	if err != nil {
-		log.Warnf("Failed to decode Proxy-Authorization header: %v", err)
+		slog.Warn("Failed to decode Proxy-Authorization header", "error", err)
 		return false
 	}
 

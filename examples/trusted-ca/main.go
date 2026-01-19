@@ -1,10 +1,9 @@
 package main
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -17,7 +16,8 @@ func main() {
 	}
 	p, err := proxy.NewProxy(opts)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create proxy", "error", err)
+		return
 	}
 	p.SetShouldInterceptRule(func(req *http.Request) bool {
 		host, _, err2 := net.SplitHostPort(req.URL.Host)
@@ -27,7 +27,9 @@ func main() {
 		return host == "your-domain.xx.com" || host == "your-domain2.xx.com" // filter your-domain
 	})
 	p.AddAddon(&YourAddOn{})
-	log.Fatal(p.Start())
+	if err := p.Start(); err != nil {
+		slog.Error("proxy exited", "error", err)
+	}
 }
 
 type YourAddOn struct {

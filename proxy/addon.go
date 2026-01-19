@@ -2,10 +2,9 @@ package proxy
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type Addon interface {
@@ -62,29 +61,44 @@ func (*BaseAddon) StreamRequestModifier(_ *Flow, in io.Reader) io.Reader    { re
 func (*BaseAddon) StreamResponseModifier(_ *Flow, in io.Reader) io.Reader   { return in }
 func (*BaseAddon) AccessProxyServer(_ *http.Request, _ http.ResponseWriter) {}
 
-// LogAddon log connection and flow.
+// LogAddon logs connection and flow events using the global slog logger.
 type LogAddon struct {
 	BaseAddon
 }
 
 func (*LogAddon) ClientConnected(client *ClientConn) {
-	log.Infof("%v client connect\n", client.Conn.RemoteAddr())
+	slog.Info("client connected", "remoteAddr", client.Conn.RemoteAddr().String())
 }
 
 func (*LogAddon) ClientDisconnected(client *ClientConn) {
-	log.Infof("%v client disconnect\n", client.Conn.RemoteAddr())
+	slog.Info("client disconnected", "remoteAddr", client.Conn.RemoteAddr().String())
 }
 
 func (*LogAddon) ServerConnected(connCtx *ConnContext) {
-	log.Infof("%v server connect %v (%v->%v)\n", connCtx.ClientConn.Conn.RemoteAddr(), connCtx.ServerConn.Address, connCtx.ServerConn.Conn.LocalAddr(), connCtx.ServerConn.Conn.RemoteAddr())
+	slog.Info("server connected",
+		"clientAddr", connCtx.ClientConn.Conn.RemoteAddr().String(),
+		"serverAddr", connCtx.ServerConn.Address,
+		"localAddr", connCtx.ServerConn.Conn.LocalAddr().String(),
+		"remoteAddr", connCtx.ServerConn.Conn.RemoteAddr().String(),
+	)
 }
 
 func (*LogAddon) ServerDisconnected(connCtx *ConnContext) {
-	log.Infof("%v server disconnect %v (%v->%v) - %v\n", connCtx.ClientConn.Conn.RemoteAddr(), connCtx.ServerConn.Address, connCtx.ServerConn.Conn.LocalAddr(), connCtx.ServerConn.Conn.RemoteAddr(), connCtx.FlowCount.Load())
+	slog.Info("server disconnected",
+		"clientAddr", connCtx.ClientConn.Conn.RemoteAddr().String(),
+		"serverAddr", connCtx.ServerConn.Address,
+		"localAddr", connCtx.ServerConn.Conn.LocalAddr().String(),
+		"remoteAddr", connCtx.ServerConn.Conn.RemoteAddr().String(),
+		"flowCount", connCtx.FlowCount.Load(),
+	)
 }
 
 func (*LogAddon) Requestheaders(f *Flow) {
-	log.Debugf("%v Requestheaders %v %v\n", f.ConnContext.ClientConn.Conn.RemoteAddr(), f.Request.Method, f.Request.URL.String())
+	slog.Debug("request headers",
+		"clientAddr", f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
+		"method", f.Request.Method,
+		"url", f.Request.URL.String(),
+	)
 	start := time.Now()
 	go func() {
 		<-f.Done()
@@ -96,7 +110,14 @@ func (*LogAddon) Requestheaders(f *Flow) {
 		if f.Response != nil && f.Response.Body != nil {
 			contentLen = len(f.Response.Body)
 		}
-		log.Infof("%v %v %v %v %v - %v ms\n", f.ConnContext.ClientConn.Conn.RemoteAddr(), f.Request.Method, f.Request.URL.String(), statusCode, contentLen, time.Since(start).Milliseconds())
+		slog.Info("request completed",
+			"clientAddr", f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
+			"method", f.Request.Method,
+			"url", f.Request.URL.String(),
+			"status", statusCode,
+			"contentLength", contentLen,
+			"durationMs", time.Since(start).Milliseconds(),
+		)
 	}()
 }
 

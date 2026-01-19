@@ -2,11 +2,11 @@ package addon
 
 import (
 	"fmt"
+	"log/slog"
 	"path"
 	"strings"
 
 	"github.com/samber/lo"
-	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/match"
 
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
@@ -96,7 +96,7 @@ func (mr *MapRemote) Requestheaders(f *proxy.Flow) {
 			f.Request = item.replace(f.Request)
 			f.UseSeparateClient = true
 			burl := f.Request.URL.String()
-			log.Infof("map remote %v to %v", aurl, burl)
+			slog.Info("map remote", "from", aurl, "to", burl)
 			return
 		}
 	}

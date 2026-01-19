@@ -3,8 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
@@ -102,7 +101,7 @@ func loadConfig() *Config {
 
 	fileConfig, err := loadConfigFromFile(cliConfig.filename)
 	if err != nil {
-		log.Warnf("read config from %v error %v", cliConfig.filename, err)
+		slog.Warn("read config from file error", "file", cliConfig.filename, "error", err)
 		return cliConfig
 	}
 	return mergeConfigs(fileConfig, cliConfig)

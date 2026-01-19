@@ -1,12 +1,11 @@
 package web
 
 import (
-	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -48,12 +47,11 @@ func (c *concurrentConn) trySendConnMessage(f *proxy.Flow) {
 	c.sendConnMessageMap[key] = true
 	msg, err := newMessageFlow(messageTypeConn, f)
 	if err != nil {
-		log.Error(fmt.Errorf("web addon gen msg: %w", err))
+		slog.Error("web addon gen msg failed", "error", err)
 		return
 	}
-	err = c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes())
-	if err != nil {
-		log.Error(err)
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes()); err != nil {
+		slog.Error("write websocket message failed", "error", err)
 		return
 	}
 }
@@ -65,9 +63,8 @@ func (c *concurrentConn) whenConnClose(connCtx *proxy.ConnContext) {
 	delete(c.sendConnMessageMap, connCtx.ID().String())
 
 	msg := newMessageConnClose(connCtx)
-	err := c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes())
-	if err != nil {
-		log.Error(err)
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes()); err != nil {
+		slog.Error("write websocket message failed", "error", err)
 		return
 	}
 }
@@ -81,7 +78,7 @@ func (c *concurrentConn) writeMessageMayWait(msg *messageFlow, f *proxy.Flow) {
 	err := c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes())
 	c.mu.Unlock()
 	if err != nil {
-		log.Error(err)
+		slog.Error("write websocket message failed", "error", err)
 		return
 	}
 
@@ -96,7 +93,7 @@ func (c *concurrentConn) writeMessage(msg *messageFlow) {
 	err := c.conn.WriteMessage(websocket.BinaryMessage, msg.toBytes())
 	c.mu.Unlock()
 	if err != nil {
-		log.Error(err)
+		slog.Error("write websocket message failed", "error", err)
 		return
 	}
 }
@@ -105,18 +102,18 @@ func (c *concurrentConn) readloop() {
 	for {
 		mt, data, err := c.conn.ReadMessage()
 		if err != nil {
-			log.Error(err)
+			slog.Error("read websocket message failed", "error", err)
 			break
 		}
 
 		if mt != websocket.BinaryMessage {
-			log.Warn("not BinaryMessage, skip")
+			slog.Warn("not BinaryMessage, skip")
 			continue
 		}
 
 		msg := parseMessage(data)
 		if msg == nil {
-			log.Warn("parseMessage error, skip")
+			slog.Warn("parseMessage error, skip")
 			continue
 		}
 
@@ -128,7 +125,7 @@ func (c *concurrentConn) readloop() {
 		} else if msgMeta, ok := msg.(*messageMeta); ok {
 			c.breakPointRules = msgMeta.breakPointRules
 		} else {
-			log.Warn("invalid message, skip")
+			slog.Warn("invalid message, skip")
 		}
 	}
 }
@@ -186,7 +183,7 @@ func (c *concurrentConn) waitIntercept(f *proxy.Flow) {
 	msgRaw := <-ch
 	msg, ok := msgRaw.(*messageEdit)
 	if !ok {
-		log.Error("received message is not a *messageEdit")
+		slog.Error("received message is not a *messageEdit")
 		f.Response = &proxy.Response{
 			StatusCode: 500,
 		}

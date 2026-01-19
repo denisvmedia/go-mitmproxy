@@ -2,11 +2,10 @@ package proxy
 
 import (
 	"crypto/tls"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // Currently only forwarding websocket traffic
@@ -29,18 +28,21 @@ var defaultWebSocket webSocket
 // }
 
 func (*webSocket) wss(res http.ResponseWriter, req *http.Request) {
-	logger := log.WithField("in", "webSocket.wss").WithField("host", req.Host)
+	logger := slog.Default().With(
+		"in", "webSocket.wss",
+		"host", req.Host,
+	)
 
 	upgradeBuf, err := httputil.DumpRequest(req, false)
 	if err != nil {
-		logger.Errorf("DumpRequest: %v\n", err)
+		logger.Error("DumpRequest failed", "error", err)
 		res.WriteHeader(502)
 		return
 	}
 
 	cconn, _, err := res.(http.Hijacker).Hijack()
 	if err != nil {
-		log.Errorf("Hijack: %v\n", err)
+		slog.Error("Hijack failed", "error", err)
 		res.WriteHeader(502)
 		return
 	}
@@ -52,14 +54,14 @@ func (*webSocket) wss(res http.ResponseWriter, req *http.Request) {
 	}
 	conn, err := tls.Dial("tcp", host, nil)
 	if err != nil {
-		log.Errorf("tls.Dial: %v\n", err)
+		slog.Error("tls.Dial failed", "error", err)
 		return
 	}
 	defer conn.Close()
 
 	_, err = conn.Write(upgradeBuf)
 	if err != nil {
-		logger.Errorf("wss upgrade: %v\n", err)
+		logger.Error("wss upgrade failed", "error", err)
 		return
 	}
 	transfer(logger, conn, cconn)

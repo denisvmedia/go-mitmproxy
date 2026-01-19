@@ -2,13 +2,12 @@ package web
 
 import (
 	"embed"
-	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -53,9 +52,10 @@ func NewWebAddon(addr string) *WebAddon {
 	web.conns = make([]*concurrentConn, 0)
 
 	go func() {
-		log.Infof("web interface start listen at %v\n", addr)
-		err := web.server.ListenAndServe()
-		log.Error(err)
+		slog.Info("web interface listening", "addr", addr)
+		if err := web.server.ListenAndServe(); err != nil {
+			slog.Error("web interface stopped", "error", err)
+		}
 	}()
 
 	return web
@@ -64,7 +64,7 @@ func NewWebAddon(addr string) *WebAddon {
 func (web *WebAddon) echo(w http.ResponseWriter, r *http.Request) {
 	c, err := web.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		slog.Error("websocket upgrade failed", "error", err)
 		return
 	}
 
@@ -122,7 +122,7 @@ func (web *WebAddon) sendFlowMayWait(f *proxy.Flow, msgFn func() (*messageFlow, 
 
 	msg, err := msgFn()
 	if err != nil {
-		log.Error(fmt.Errorf("web addon gen msg: %w", err))
+		slog.Error("web addon gen msg failed", "error", err)
 		return
 	}
 	for _, c := range conns {
@@ -217,7 +217,7 @@ func (web *WebAddon) sendFlow(msgFn func() (*messageFlow, error)) {
 
 	msg, err := msgFn()
 	if err != nil {
-		log.Error(fmt.Errorf("web addon gen msg: %w", err))
+		slog.Error("web addon gen msg failed", "error", err)
 		return
 	}
 	for _, c := range conns {

@@ -6,12 +6,12 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	log "github.com/sirupsen/logrus"
 )
 
 var errEncodingNotSupport = errors.New("content-encoding not support")
@@ -47,7 +47,7 @@ func (req *Request) DecodedBody() ([]byte, error) {
 
 	decodedBody, decodedErr := decode(enc, req.Body)
 	if decodedErr != nil {
-		log.Error(decodedErr)
+		slog.Error("failed to decode request body", "error", decodedErr)
 		return nil, decodedErr
 	}
 
@@ -66,7 +66,7 @@ func (r *Response) DecodedBody() ([]byte, error) {
 
 	decodedBody, decodedErr := decode(enc, r.Body)
 	if decodedErr != nil {
-		log.Error(decodedErr)
+		slog.Error("failed to decode response body", "error", decodedErr)
 		return nil, decodedErr
 	}
 

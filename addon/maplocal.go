@@ -3,11 +3,10 @@ package addon
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
@@ -39,7 +38,7 @@ func (itm *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response) 
 					StatusCode: 404,
 				}
 			}
-			log.Errorf("map local %v os.Stat error", filepath)
+			slog.Error("map local os.Stat error", "path", filepath, "error", err)
 			return nil, &proxy.Response{
 				StatusCode: 500,
 			}
@@ -50,7 +49,7 @@ func (itm *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response) 
 	respFile := func(filepath string) *proxy.Response {
 		file, err := os.Open(filepath)
 		if err != nil {
-			log.Errorf("map local %v os.Open error", filepath)
+			slog.Error("map local os.Open error", "path", filepath, "error", err)
 			return &proxy.Response{
 				StatusCode: 500,
 			}
@@ -85,7 +84,7 @@ func (itm *mapLocalItem) response(req *proxy.Request) (string, *proxy.Response) 
 	if !stat.IsDir() {
 		return filepath, respFile(filepath)
 	}
-	log.Errorf("map local %v should be file", filepath)
+	slog.Error("map local path should be file", "path", filepath)
 	return filepath, &proxy.Response{
 		StatusCode: 500,
 	}
@@ -105,7 +104,7 @@ func (ml *MapLocal) Requestheaders(f *proxy.Flow) {
 		if item.match(f.Request) {
 			aurl := f.Request.URL.String()
 			localfile, resp := item.response(f.Request)
-			log.Infof("map local %v to %v", aurl, localfile)
+			slog.Info("map local", "from", aurl, "to", localfile)
 			f.Response = resp
 			return
 		}

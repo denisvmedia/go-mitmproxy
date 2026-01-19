@@ -1,7 +1,7 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -16,10 +16,14 @@ func (*RewriteHost) ClientConnected(client *proxy.ClientConn) {
 }
 
 func (*RewriteHost) Requestheaders(f *proxy.Flow) {
-	log.Printf("Host: %v, Method: %v, Scheme: %v", f.Request.URL.Host, f.Request.Method, f.Request.URL.Scheme)
+	slog.Info("rewrite host request",
+		"host", f.Request.URL.Host,
+		"method", f.Request.Method,
+		"scheme", f.Request.URL.Scheme,
+	)
 	f.Request.URL.Host = "www.baidu.com"
 	f.Request.URL.Scheme = "http"
-	log.Printf("After: %v", f.Request.URL)
+	slog.Info("rewrite host result", "url", f.Request.URL)
 }
 
 func main() {
@@ -30,11 +34,14 @@ func main() {
 
 	p, err := proxy.NewProxy(opts)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create proxy", "error", err)
+		return
 	}
 
 	p.AddAddon(&RewriteHost{})
 	p.AddAddon(&proxy.LogAddon{})
 
-	log.Fatal(p.Start())
+	if err := p.Start(); err != nil {
+		slog.Error("proxy exited", "error", err)
+	}
 }

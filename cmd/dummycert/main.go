@@ -5,9 +5,8 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 )
@@ -26,16 +25,13 @@ func loadConfig() *Config {
 }
 
 func main() {
-	log.SetLevel(log.InfoLevel)
-	log.SetReportCaller(false)
-	log.SetOutput(os.Stdout)
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp: true,
-	})
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 
 	config := loadConfig()
 	if config.commonName == "" {
-		log.Fatal("commonName required")
+		slog.Error("commonName required")
+		os.Exit(1)
 	}
 
 	caAPI, err := cert.NewSelfSignCA("")

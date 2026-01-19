@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"log/slog"
 
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -307,7 +307,7 @@ func parseMessage(data []byte) message {
 	case messageTypeChangeBreakPointRules:
 		return parseMessageMeta(data)
 	default:
-		log.Warnf("invalid message type %v", mType)
+		slog.Warn("invalid message type", "type", mType)
 		return nil
 	}
 }

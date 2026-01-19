@@ -4,11 +4,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"log/slog"
 	"sync"
 
 	"github.com/golang/groupcache/lru"
 	"github.com/golang/groupcache/singleflight"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 )
@@ -35,7 +35,7 @@ func (ca *TrustedCA) GetCert(commonName string) (*tls.Certificate, error) {
 	ca.cacheMu.Lock()
 	if val, ok := ca.cache.Get(commonName); ok {
 		ca.cacheMu.Unlock()
-		log.Debugf("ca GetCert: %v", commonName)
+		slog.Debug("TrustedCA GetCert cache hit", "commonName", commonName)
 		tlsCert, ok := val.(*tls.Certificate)
 		if !ok {
 			return nil, errors.New("cached value is not a tls.Certificate")

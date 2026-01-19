@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/golang/groupcache/lru"
 	"github.com/golang/groupcache/singleflight"
-	log "github.com/sirupsen/logrus"
 )
 
 // reference
@@ -112,7 +112,7 @@ func NewSelfSignCA(path string) (CA, error) {
 
 	err = ca.load()
 	if err == nil {
-		log.Debug("load root ca")
+		slog.Debug("load root ca")
 		return ca, nil
 	}
 	if !errors.Is(err, errCaNotFound) {
@@ -122,7 +122,7 @@ func NewSelfSignCA(path string) (CA, error) {
 	if err := ca.create(); err != nil {
 		return nil, err
 	}
-	log.Debug("create root ca")
+	slog.Debug("create root ca")
 	return ca, nil
 }
 
@@ -305,7 +305,7 @@ func (ca *SelfSignCA) GetCert(commonName string) (*tls.Certificate, error) {
 	ca.cacheMu.Lock()
 	if val, ok := ca.cache.Get(commonName); ok {
 		ca.cacheMu.Unlock()
-		log.Debugf("ca GetCert: %v", commonName)
+		slog.Debug("ca GetCert", "commonName", commonName)
 		cert, ok := val.(*tls.Certificate)
 		if !ok {
 			return nil, errors.New("cached value is not a tls.Certificate")
@@ -337,7 +337,7 @@ func (ca *SelfSignCA) GetCert(commonName string) (*tls.Certificate, error) {
 
 // TODO: Should we support multiple SubjectAltNames.
 func (ca *SelfSignCA) DummyCert(commonName string) (*tls.Certificate, error) {
-	log.Debugf("ca DummyCert: %v", commonName)
+	slog.Debug("ca DummyCert", "commonName", commonName)
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano() / 100000),
 		Subject: pkix.Name{

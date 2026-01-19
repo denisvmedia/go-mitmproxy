@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
@@ -69,7 +68,7 @@ func (prx *Proxy) AddAddon(addon Addon) {
 func (prx *Proxy) Start() error {
 	go func() {
 		if err := prx.attacker.start(); err != nil {
-			log.Error(err)
+			slog.Error("attacker start failed", "error", err)
 		}
 	}()
 	return prx.entry.start()

@@ -55,7 +55,7 @@ jobs:
         run: go build -v ./...
 
       - name: Build standalone binary
-        run: go build -v -o bin/nolintguard ./cmd/nolintguard
+        run: go build -v -o bin/go-mitmproxy ./cmd/go-mitmproxy
 
   # Unit Tests
   unit-tests:

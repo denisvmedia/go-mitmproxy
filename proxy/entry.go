@@ -4,11 +4,10 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
@@ -73,7 +72,7 @@ func (c *wrapClientConn) Close() error {
 		c.closeMu.Unlock()
 		return c.closeErr
 	}
-	log.Debugln("in wrapClientConn close", c.connCtx.ClientConn.Conn.RemoteAddr())
+	slog.Debug("wrapClientConn close", "remoteAddr", c.connCtx.ClientConn.Conn.RemoteAddr().String())
 
 	c.closed = true
 	c.closeErr = c.Conn.Close()
@@ -108,7 +107,7 @@ func (c *wrapServerConn) Close() error {
 		c.closeMu.Unlock()
 		return c.closeErr
 	}
-	log.Debugln("in wrapServerConn close", c.connCtx.ClientConn.Conn.RemoteAddr())
+	slog.Debug("wrapServerConn close", "remoteAddr", c.connCtx.ClientConn.Conn.RemoteAddr().String())
 
 	c.closed = true
 	c.closeErr = c.Conn.Close()
@@ -155,7 +154,7 @@ func (e *entry) start() error {
 		return err
 	}
 
-	log.Infof("Proxy start listen at %v\n", e.server.Addr)
+	slog.Info("proxy listening", "addr", e.server.Addr)
 	pln := &wrapListener{
 		Listener: ln,
 		proxy:    e.proxy,
@@ -174,15 +173,15 @@ func (e *entry) shutdown(ctx context.Context) error {
 func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	proxy := e.proxy
 
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.ServeHTTP",
-		"host": req.Host,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.entry.ServeHTTP",
+		"host", req.Host,
+	)
 	// Add entry proxy authentication
 	if e.proxy.authProxy != nil {
 		b, err := e.proxy.authProxy(res, req)
 		if !b {
-			logger.Errorf("Proxy authentication failed: %s", err.Error())
+			logger.Error("Proxy authentication failed", "error", err)
 			httpError(res, "", http.StatusProxyAuthRequired)
 			return
 		}
@@ -215,10 +214,10 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	proxy := e.proxy
 
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.handleConnect",
-		"host": req.Host,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.entry.handleConnect",
+		"host", req.Host,
+	)
 
 	shouldIntercept := proxy.shouldIntercept == nil || proxy.shouldIntercept(req)
 	f := newFlow()
@@ -237,7 +236,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if !shouldIntercept {
-		logger.Debugf("begin transpond %v", req.Host)
+		logger.Debug("begin transpond", "host", req.Host)
 		e.directTransfer(res, req, f)
 		return
 	}
@@ -247,7 +246,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logger.Debugf("begin intercept %v", req.Host)
+	logger.Debug("begin intercept", "host", req.Host)
 	e.httpsDialLazyAttack(res, req, f)
 }
 
@@ -278,14 +277,14 @@ func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn,
 
 func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.directTransfer",
-		"host": req.Host,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.entry.directTransfer",
+		"host", req.Host,
+	)
 
 	conn, err := proxy.getUpstreamConn(req.Context(), req)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("get upstream conn failed", "error", err)
 		res.WriteHeader(502)
 		return
 	}
@@ -293,7 +292,7 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("establish connection failed", "error", err)
 		return
 	}
 	defer cconn.Close()
@@ -303,14 +302,14 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 
 func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.httpsDialFirstAttack",
-		"host": req.Host,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.entry.httpsDialFirstAttack",
+		"host", req.Host,
+	)
 
 	conn, err := proxy.attacker.httpsDial(req.Context(), req)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("httpsDial failed", "error", err)
 		res.WriteHeader(502)
 		return
 	}
@@ -318,7 +317,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
 		conn.Close()
-		logger.Error(err)
+		logger.Error("establish connection failed", "error", err)
 		return
 	}
 
@@ -326,7 +325,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 	if err != nil {
 		cconn.Close()
 		conn.Close()
-		logger.Error(err)
+		logger.Error("peek failed", "error", err)
 		return
 	}
 	if !helper.IsTLS(peek) {
@@ -344,21 +343,21 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	logger := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.httpsDialLazyAttack",
-		"host": req.Host,
-	})
+	logger := slog.Default().With(
+		"in", "Proxy.entry.httpsDialLazyAttack",
+		"host", req.Host,
+	)
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("establish connection failed", "error", err)
 		return
 	}
 
 	peek, err := cconn.(*wrapClientConn).Peek(3)
 	if err != nil {
 		cconn.Close()
-		logger.Error(err)
+		logger.Error("peek failed", "error", err)
 		return
 	}
 
@@ -367,7 +366,7 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 		conn, err := proxy.attacker.httpsDial(req.Context(), req)
 		if err != nil {
 			cconn.Close()
-			logger.Error(err)
+			logger.Error("httpsDial failed", "error", err)
 			return
 		}
 		transfer(logger, conn, cconn)

@@ -3,10 +3,9 @@ package main
 import (
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
@@ -37,7 +36,7 @@ func (usr *UserAuth) parseRequestAuth(proxyAuth string) bool {
 	encodedAuth := strings.TrimPrefix(proxyAuth, "Basic ")
 	decodedAuth, err := base64.StdEncoding.DecodeString(encodedAuth)
 	if err != nil {
-		log.Warnf("Failed to decode Proxy-Authorization header: %v", err)
+		slog.Warn("Failed to decode Proxy-Authorization header", "error", err)
 		return false
 	}
 
@@ -59,7 +58,8 @@ func main() {
 
 	p, err := proxy.NewProxy(opts)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create proxy", "error", err)
+		return
 	}
 	auth := &UserAuth{
 		Username: "proxy",
@@ -69,5 +69,7 @@ func main() {
 	p.SetAuthProxy(auth.AuthEntrypAuth)
 	p.AddAddon(&proxy.LogAddon{})
 
-	log.Fatal(p.Start())
+	if err := p.Start(); err != nil {
+		slog.Error("proxy exited", "error", err)
+	}
 }
