@@ -107,7 +107,7 @@ func loadConfig() *Config {
 	return mergeConfigs(fileConfig, cliConfig)
 }
 
-// arrayValue 实现了 flag.Value 接口
+// arrayValue implements the flag.Value interface
 type arrayValue []string
 
 func (a *arrayValue) String() string {

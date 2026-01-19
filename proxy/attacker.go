@@ -64,7 +64,7 @@ func newAttacker(proxy *Proxy) (*attacker, error) {
 				},
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// 禁止自动重定向
+				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
 		},
@@ -112,7 +112,7 @@ func (a *attacker) serveConn(clientTlsConn *tls.Conn, connCtx *ConnContext) {
 				DisableCompression: true,
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// 禁止自动重定向
+				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
 		}
@@ -182,7 +182,7 @@ func (a *attacker) initHttpDialFn(req *http.Request) {
 				DisableCompression: true,  // To get the original response from the server, set Transport.DisableCompression to true.
 			},
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				// 禁止自动重定向
+				// Disable automatic redirects
 				return http.ErrUseLastResponse
 			},
 		}
@@ -207,7 +207,7 @@ func (a *attacker) serverTlsHandshake(ctx context.Context, connCtx *ConnContext)
 		KeyLogWriter:       helper.GetTlsKeyLogWriter(),
 		ServerName:         clientHello.ServerName,
 		NextProtos:         clientHello.SupportedProtos,
-		// CurvePreferences:   clientHello.SupportedCurves, // todo: 如果打开会出错
+		// CurvePreferences:   clientHello.SupportedCurves, // todo: will cause errors if enabled
 		CipherSuites: clientHello.CipherSuites,
 	}
 	if len(clientHello.SupportedVersions) > 0 {
@@ -244,7 +244,7 @@ func (a *attacker) serverTlsHandshake(ctx context.Context, connCtx *ConnContext)
 			DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// 禁止自动重定向
+			// Disable automatic redirects
 			return http.ErrUseLastResponse
 		},
 	}
@@ -306,7 +306,7 @@ func (a *attacker) httpsTlsDial(ctx context.Context, cconn net.Conn, conn net.Co
 	clientHandshakeDoneChan := make(chan struct{})
 
 	clientTlsConn := tls.Server(cconn, &tls.Config{
-		SessionTicketsDisabled: true, // 设置此值为 true ，确保每次都会调用下面的 GetConfigForClient 方法
+		SessionTicketsDisabled: true, // Set this to true to ensure GetConfigForClient is called every time
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			clientHelloChan <- chi
 			nextProtos := make([]string, 0)
@@ -383,7 +383,7 @@ func (a *attacker) httpsLazyAttack(ctx context.Context, cconn net.Conn, req *htt
 	})
 
 	clientTlsConn := tls.Server(cconn, &tls.Config{
-		SessionTicketsDisabled: true, // 设置此值为 true ，确保每次都会调用下面的 GetConfigForClient 方法
+		SessionTicketsDisabled: true, // Set this to true to ensure GetConfigForClient is called every time
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			connCtx.ClientConn.clientHello = chi
 			c, err := a.ca.GetCert(chi.ServerName)

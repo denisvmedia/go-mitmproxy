@@ -202,7 +202,7 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		if res, ok := res.(*helper.ResponseCheck); ok {
 			if !res.Wrote {
 				res.WriteHeader(400)
-				io.WriteString(res, "此为代理服务器，不能直接发起请求")
+				io.WriteString(res, "This is a proxy server, direct requests are not allowed")
 			}
 		}
 		return

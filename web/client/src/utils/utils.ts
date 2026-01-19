@@ -106,7 +106,7 @@ export const bufHexView = (buf: ArrayBuffer) => {
     }
   }
 
-  // 补充最后一行的空白
+  // Fill in the blanks for the last line
   if (viewStr.length > 0) {
     for (let i = viewStr.length; i < 16; i++) {
       str += '  ' + ' '

@@ -144,7 +144,7 @@ func (c *concurrentConn) initWaitChan(key string) chan interface{} {
 	return ch
 }
 
-// 是否拦截
+// Check whether to intercept
 func (c *concurrentConn) isIntercpt(f *proxy.Flow, mType messageType) bool {
 	if mType != messageTypeRequestBody && mType != messageTypeResponseBody {
 		return false
@@ -179,7 +179,7 @@ func (c *concurrentConn) isIntercpt(f *proxy.Flow, mType messageType) bool {
 	return false
 }
 
-// 拦截
+// Intercept
 func (c *concurrentConn) waitIntercept(f *proxy.Flow) {
 	ch := c.initWaitChan(f.Id.String())
 	msg := (<-ch).(*messageEdit)

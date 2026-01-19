@@ -1,18 +1,8 @@
 # go-mitmproxy
 
-<div align="center" markdown="1">
-   <a href="https://apps.apple.com/us/app/sqlman-mysql-database-gui/id6498632117?mt=12">
-	 <img src="./assets/sqlman-en.png" alt="sqlman" width="650"/>
-   </a>
-
-[Welcome to my software: Sqlman - MySQL Database GUI](https://apps.apple.com/us/app/sqlman-mysql-database-gui/id6498632117?mt=12)
-<br>
-
-</div>
-
-[简体中文](./README_CN.md)
-
 `go-mitmproxy` is a Golang implementation of [mitmproxy](https://mitmproxy.org/) that supports man-in-the-middle attacks and parsing, monitoring, and tampering with HTTP/HTTPS traffic.
+
+> This project is forked from [lqqyt2423/go-mitmproxy](https://github.com/lqqyt2423/go-mitmproxy).
 
 ## Key features
 
@@ -181,30 +171,6 @@ You can access the web interface at http://localhost:9081/ using a web browser.
 
 ![](./assets/web-3.png)
 
-### Sponsor Me
-
-If you find this project helpful, consider buying me a cup of coffee. Feel free to reach out for any technical inquiries.
-
-The author is currently unemployed. If you have any full-time or part-time job opportunities, feel free to scan the QR code to add me on WeChat for further discussion.
-
-<table>
-  <thead>
-    <tr>
-      <th align="center" style="width: 240px;">
-        <div>
-          <img src="./assets/sponsor-me.jpeg" height="200px" alt="WeChat QR Code for Sponsorship"><br>
-          <sub>WeChat QR Code for Sponsorship</sub>
-        </div>
-      </th>
-      <th align="center" style="width: 240px;">
-        <div>
-          <img src="./assets/wx.jpg" height="200px" alt="Contact Me"><br>
-          <sub>Contact Me</sub>
-        </div>
-      </th>
-    </tr>
-  </thead>
-</table>
 
 ## License
 

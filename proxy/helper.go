@@ -21,7 +21,7 @@ var normalErrMsgs []string = []string{
 	"use of closed network connection",
 }
 
-// 仅打印预料之外的错误信息
+// Only print unexpected error messages
 func logErr(log *log.Entry, err error) (loged bool) {
 	msg := err.Error()
 
@@ -37,7 +37,7 @@ func logErr(log *log.Entry, err error) (loged bool) {
 	return
 }
 
-// 转发流量
+// Transfer traffic
 func transfer(log *log.Entry, server, client io.ReadWriteCloser) {
 	done := make(chan struct{})
 	defer close(done)
@@ -75,7 +75,7 @@ func transfer(log *log.Entry, server, client io.ReadWriteCloser) {
 	for i := 0; i < 2; i++ {
 		if err := <-errChan; err != nil {
 			logErr(log, err)
-			return // 如果有错误，直接返回
+			return // If there's an error, return immediately
 		}
 	}
 }

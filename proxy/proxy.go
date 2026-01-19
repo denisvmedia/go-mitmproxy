@@ -16,10 +16,10 @@ import (
 type Options struct {
 	Debug             int
 	Addr              string
-	StreamLargeBodies int64 // 当请求或响应体大于此字节时，转为 stream 模式
+	StreamLargeBodies int64 // When request or response body is larger than this number of bytes, switch to stream mode
 	SslInsecure       bool
 	CaRootPath        string
-	NewCaFunc         func() (cert.CA, error) //创建 Ca 的函数
+	NewCaFunc         func() (cert.CA, error) // Function to create CA
 	Upstream          string
 	LogFilePath       string // Path to write logs to file
 }

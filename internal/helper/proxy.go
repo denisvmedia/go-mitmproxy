@@ -20,7 +20,7 @@ import (
 func GetProxyConn(ctx context.Context, proxyUrl *url.URL, address string, sslInsecure bool) (net.Conn, error) {
 	var conn net.Conn
 	if proxyUrl.Scheme == "socks5" {
-		//检测socks5认证信息
+		// Check for socks5 authentication info
 		proxyAuth := &proxy.Auth{}
 		if proxyUrl.User != nil {
 			user := proxyUrl.User.Username()
@@ -46,21 +46,21 @@ func GetProxyConn(ctx context.Context, proxyUrl *url.URL, address string, sslIns
 		if err != nil {
 			return nil, err
 		}
-		// 如果代理URL是HTTPS，则进行TLS握手
+		// If the proxy URL is HTTPS, perform TLS handshake
 		if proxyUrl.Scheme == "https" {
 			tlsConfig := &tls.Config{
-				ServerName:         proxyUrl.Hostname(), // 设置TLS握手的服务器名称
+				ServerName:         proxyUrl.Hostname(), // Set server name for TLS handshake
 				InsecureSkipVerify: sslInsecure,
-				// 可以在这里添加其他TLS配置
+				// Additional TLS configurations can be added here
 			}
-			// 包装原始连接为TLS连接
+			// Wrap the original connection as a TLS connection
 			tlsConn := tls.Client(conn, tlsConfig)
-			// 执行TLS握手
+			// Perform TLS handshake
 			if err := tlsConn.HandshakeContext(ctx); err != nil {
-				conn.Close() // 握手失败，关闭连接
+				conn.Close() // Handshake failed, close connection
 				return nil, err
 			}
-			conn = tlsConn // 使用TLS连接替换原始连接
+			conn = tlsConn // Replace the original connection with the TLS connection
 		}
 		connectReq := &http.Request{
 			Method: "CONNECT",

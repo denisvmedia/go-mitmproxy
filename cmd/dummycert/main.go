@@ -11,7 +11,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// 生成假的/用于测试的服务器证书
+// Generate fake/test server certificates
 
 type Config struct {
 	commonName string

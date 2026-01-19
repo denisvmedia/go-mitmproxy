@@ -10,9 +10,9 @@ import (
 	"os"
 )
 
-// 尝试将 Reader 读取至 buffer 中
-// 如果未达到 limit，则成功读取进入 buffer
-// 否则 buffer 返回 nil，且返回新 Reader，状态为未读取前
+// Try to read Reader into buffer
+// If the limit is not reached, successfully read into buffer
+// Otherwise buffer returns nil, and a new Reader is returned with state before reading
 func ReaderToBuffer(r io.Reader, limit int64) ([]byte, io.Reader, error) {
 	buf := bytes.NewBuffer(make([]byte, 0))
 	lr := io.LimitReader(r, limit)
@@ -22,13 +22,13 @@ func ReaderToBuffer(r io.Reader, limit int64) ([]byte, io.Reader, error) {
 		return nil, nil, err
 	}
 
-	// 达到上限
+	// Reached the limit
 	if int64(buf.Len()) == limit {
-		// 返回新的 Reader
+		// Return a new Reader
 		return nil, io.MultiReader(bytes.NewBuffer(buf.Bytes()), r), nil
 	}
 
-	// 返回 buffer
+	// Return buffer
 	return buf.Bytes(), nil, nil
 }
 

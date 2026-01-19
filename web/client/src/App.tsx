@@ -183,7 +183,7 @@ class App extends React.Component<IProps, IState> {
       return
     }
     this.pendingMessages.push(msg)
-    // 先最多保留10条
+    // Keep at most 10 messages
     if (this.pendingMessages.length > 10) {
       this.pendingMessages = this.pendingMessages.slice(this.pendingMessages.length - 10)
     }
@@ -220,7 +220,7 @@ class App extends React.Component<IProps, IState> {
               </Form.Control>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
 
-                <a href='https://github.com/lqqyt2423/go-mitmproxy/blob/main/docs/web-filter-rules_CN.md' target='_blank' rel="noreferrer">
+                <a href='https://github.com/lqqyt2423/go-mitmproxy/blob/main/docs/web-filter-rules.md' target='_blank' rel="noreferrer">
                   <span style={{
                     display: 'inline-block',
                     width: '16px',

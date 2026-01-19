@@ -340,7 +340,7 @@ function ViewFlow({ flow, onClose, onReRenderFlows, onMessage }: Iprops) {
                       onChange={e => {
                         setResponseBodyLineBreak(e.target.checked)
                       }}
-                      label="自动换行"></FormCheck>
+                      label="Word Wrap"></FormCheck>
                   </div>
                   <div style={{ whiteSpace: responseBodyLineBreak ? 'pre-wrap' : 'pre' }}>
                     {flow.responseBody()}
