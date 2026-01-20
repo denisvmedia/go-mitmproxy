@@ -4,10 +4,14 @@ import (
 	"net/url"
 	"testing"
 
+	qt "github.com/frankban/quicktest"
+
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 func TestMapItemMatch(t *testing.T) {
+	c := qt.New(t)
+
 	req := &proxy.Request{
 		Method: "GET",
 		URL: &url.URL{
@@ -30,9 +34,7 @@ func TestMapItemMatch(t *testing.T) {
 		Enable: true,
 	}
 	result := item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// empty Protocol and empty Method match
 	item.From = &mapFrom{
@@ -42,9 +44,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// empty Host match
 	item.From = &mapFrom{
@@ -54,9 +54,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/*",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// all empty match
 	item.From = &mapFrom{
@@ -66,9 +64,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// test not match
 
@@ -80,9 +76,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Host
 	item.From = &mapFrom{
@@ -92,9 +86,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Method
 	item.From = &mapFrom{
@@ -104,9 +96,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Path
 	item.From = &mapFrom{
@@ -116,12 +106,12 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/hello/world",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 }
 
 func TestMapItemReplace(t *testing.T) {
+	c := qt.New(t)
+
 	rawreq := func() *proxy.Request {
 		return &proxy.Request{
 			Method: "GET",
@@ -149,9 +139,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req := item.replace(rawreq())
 	should := "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -169,9 +157,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -189,9 +175,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/world"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -209,9 +193,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -229,7 +211,5 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/world/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 }

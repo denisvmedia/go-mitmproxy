@@ -541,7 +541,7 @@ func (a *Attacker) executeProxyRequest(f *types.Flow, req *http.Request, reqBody
 		return nil, err
 	}
 
-	logger.Info("DEBUG: got response", "status", proxyRes.StatusCode, "contentLength", proxyRes.ContentLength)
+	logger.Debug("got response", "status", proxyRes.StatusCode, "contentLength", proxyRes.ContentLength)
 	return proxyRes, nil
 }
 
@@ -583,14 +583,14 @@ func (a *Attacker) readResponseBody(f *types.Flow, proxyRes *http.Response, logg
 	}
 
 	f.Response.Body = resBuf
-	logger.Info("DEBUG: buffered response body", "size", len(resBuf))
+	logger.Debug("buffered response body", "size", len(resBuf))
 
 	// trigger addon event Response
 	for _, addon := range a.addonRegistry.Get() {
 		addon.Response(f)
 	}
 
-	logger.Info("DEBUG: after Response addon", "bodySize", len(f.Response.Body))
+	logger.Debug("after Response addon", "bodySize", len(f.Response.Body))
 	return resBody, true
 }
 
@@ -598,7 +598,7 @@ func (a *Attacker) readResponseBody(f *types.Flow, proxyRes *http.Response, logg
 // It writes the response headers, status code, and body (from multiple possible sources).
 // The body can come from a reader, a BodyReader field, or a Body byte slice.
 func (*Attacker) replyToClient(res http.ResponseWriter, response *types.Response, body io.Reader, logger *slog.Logger) {
-	logger.Info("DEBUG: replyToClient", "bodyReader", body != nil, "responseBodyReader", response.BodyReader != nil, "responseBodyLen", len(response.Body))
+	logger.Debug("replyToClient", "bodyReader", body != nil, "responseBodyReader", response.BodyReader != nil, "responseBodyLen", len(response.Body))
 	if response.Header != nil {
 		for key, value := range response.Header {
 			for _, v := range value {
@@ -613,21 +613,21 @@ func (*Attacker) replyToClient(res http.ResponseWriter, response *types.Response
 
 	if body != nil {
 		n, err := io.Copy(res, body)
-		logger.Info("DEBUG: wrote from body reader", "bytes", n)
+		logger.Debug("wrote from body reader", "bytes", n)
 		if err != nil {
 			logErr(logger, err)
 		}
 	}
 	if response.BodyReader != nil {
 		n, err := io.Copy(res, response.BodyReader)
-		logger.Info("DEBUG: wrote from response.BodyReader", "bytes", n)
+		logger.Debug("wrote from response.BodyReader", "bytes", n)
 		if err != nil {
 			logErr(logger, err)
 		}
 	}
 	if len(response.Body) > 0 {
 		n, err := res.Write(response.Body)
-		logger.Info("DEBUG: wrote from response.Body", "bytes", n, "body", string(response.Body), "err", err)
+		logger.Debug("wrote from response.Body", "bytes", n, "body", string(response.Body), "err", err)
 		if err != nil {
 			logErr(logger, err)
 		}
@@ -636,7 +636,7 @@ func (*Attacker) replyToClient(res http.ResponseWriter, response *types.Response
 	// Flush the response
 	if flusher, ok := res.(http.Flusher); ok {
 		flusher.Flush()
-		logger.Info("DEBUG: flushed response")
+		logger.Debug("flushed response")
 	}
 }
 
