@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,8 +34,25 @@ func (m *mockConn) RemoteAddr() net.Addr { return m.remoteAddr }
 func (m *mockConn) LocalAddr() net.Addr  { return m.localAddr }
 func (*mockConn) Close() error           { return nil }
 
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func captureLog(fn func()) string {
-	var buf bytes.Buffer
+	var buf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	oldLogger := slog.Default()
 	slog.SetDefault(logger)
@@ -150,7 +168,7 @@ func TestLogAddonRequestheadersWritesDebugLogWithMethodAndURL(t *testing.T) {
 	}
 	flow.ConnContext = connCtx
 
-	var buf bytes.Buffer
+	var buf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	oldLogger := slog.Default()
 	slog.SetDefault(logger)
@@ -188,7 +206,7 @@ func TestLogAddonRequestheadersLogsCompletionWithStatusAndDuration(t *testing.T)
 	}
 	flow.ConnContext = connCtx
 
-	var buf bytes.Buffer
+	var buf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	oldLogger := slog.Default()
 	slog.SetDefault(logger)
@@ -231,7 +249,7 @@ func TestLogAddonRequestheadersLogsZeroStatusWhenNoResponse(t *testing.T) {
 	flow.Response = nil
 	flow.ConnContext = connCtx
 
-	var buf bytes.Buffer
+	var buf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	oldLogger := slog.Default()
 	slog.SetDefault(logger)
@@ -270,7 +288,7 @@ func TestLogAddonRequestheadersLogsZeroContentLengthWhenNoBody(t *testing.T) {
 	}
 	flow.ConnContext = connCtx
 
-	var buf bytes.Buffer
+	var buf safeBuffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	oldLogger := slog.Default()
 	slog.SetDefault(logger)
