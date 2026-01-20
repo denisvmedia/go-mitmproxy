@@ -6,4 +6,5 @@ type Config struct {
 	StreamLargeBodies  int64
 	InsecureSkipVerify bool
 	Upstream           string
+	ClientFactory      ClientFactory
 }
