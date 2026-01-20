@@ -37,6 +37,26 @@ test:
 dev:
 	go run $(shell ls cmd/go-mitmproxy/*.go | grep -v _test.go)
 
+.PHONY: install-nolintguard
+install-nolintguard:
+	@which nolintguard > /dev/null || go install github.com/go-extras/nolintguard/cmd/nolintguard@latest
+
+.PHONY: nolintguard
+nolintguard: install-nolintguard
+	nolintguard ./...
+
+.PHONY: install-qtlint
+install-qtlint:
+	@which qtlint > /dev/null || go install github.com/go-extras/qtlint/cmd/qtlint@latest
+
+.PHONY: qtlint
+qtlint: install-qtlint
+	qtlint ./...
+
+.PHONY: qtlint-fix
+qtlint-fix: install-qtlint
+	qtlint -fix ./...
+
 .PHONY: lint-go
 lint-go:
 	golangci-lint run --timeout=30m ./...
@@ -44,3 +64,6 @@ lint-go:
 .PHONY: lint-go-fix
 lint-go-fix:
 	golangci-lint run --fix --timeout=30m ./...
+
+.PHONY: lint
+lint: lint-go nolintguard qtlint

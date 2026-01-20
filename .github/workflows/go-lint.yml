@@ -46,3 +46,13 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+      - name: Run nolintguard
+        run: |
+          go install github.com/go-extras/nolintguard/cmd/nolintguard@latest
+          nolintguard ./...
+
+      - name: Run qtlint
+        run: |
+          go install github.com/go-extras/qtlint/cmd/qtlint@latest
+          qtlint ./...

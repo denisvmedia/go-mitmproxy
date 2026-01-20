@@ -11,7 +11,7 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 )
 
-var normalErrMsgs []string = []string{
+var normalErrMsgs = []string{
 	"read: connection reset by peer",
 	"write: broken pipe",
 	"i/o timeout",
