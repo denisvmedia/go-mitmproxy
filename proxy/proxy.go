@@ -49,6 +49,7 @@ func NewProxy(config Config, ca cert.CA) (*Proxy, error) {
 		StreamLargeBodies:  config.StreamLargeBodies,
 		InsecureSkipVerify: config.InsecureSkipVerify,
 		WSHandler:          wsHandler,
+		ClientFactory:      config.ClientFactory,
 	})
 	if err != nil {
 		return nil, err

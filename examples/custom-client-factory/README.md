@@ -90,7 +90,7 @@ func (f *MockClientFactory) CreateMainClient(upstreamManager proxy.UpstreamManag
 
 ## How to Use
 
-To use a custom client factory, you need to create the attacker manually:
+To use a custom client factory, simply pass it in the `Config`:
 
 ```go
 import (
@@ -100,10 +100,17 @@ import (
 // Create your custom factory
 clientFactory := NewCustomClientFactory()
 
-// Note: To use a custom client factory with the standard proxy.NewProxy,
-// you would need to create the attacker manually and pass it to a custom
-// proxy constructor. For most use cases, you can extend proxy.NewProxy
-// or create your own initialization function that accepts a ClientFactory.
+// Pass it in the config
+config := proxy.Config{
+    Addr:              ":9080",
+    StreamLargeBodies: 1024 * 1024 * 5,
+    ClientFactory:     clientFactory,
+}
+
+p, err := proxy.NewProxy(config, ca)
+if err != nil {
+    // handle error
+}
 ```
 
 ## Benefits

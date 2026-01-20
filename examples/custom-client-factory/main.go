@@ -138,16 +138,12 @@ func main() {
 	// 3. Force HTTP/2 factory
 	// clientFactory := NewForceHTTP2ClientFactory()
 
-	// Note: To use a custom client factory, you need to create the attacker manually
-	// instead of using proxy.NewProxy. This gives you full control over the dependencies.
-	slog.Info("This example demonstrates the ClientFactory interface")
-	slog.Info("In a real implementation, you would need to create the attacker manually")
-	slog.Info("and pass it to the proxy, or extend proxy.NewProxy to accept a ClientFactory")
+	slog.Info("Using custom client factory with the proxy")
 
-	// For now, just use the standard proxy
 	config := proxy.Config{
 		Addr:              ":9080",
 		StreamLargeBodies: 1024 * 1024 * 5,
+		ClientFactory:     clientFactory,
 	}
 
 	p, err := proxy.NewProxy(config, ca)
@@ -155,9 +151,6 @@ func main() {
 		slog.Error("failed to create proxy", "error", err)
 		return
 	}
-
-	// The clientFactory variable is used to demonstrate the pattern
-	_ = clientFactory
 
 	if err := p.Start(); err != nil {
 		slog.Error("proxy exited", "error", err)
