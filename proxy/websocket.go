@@ -66,3 +66,10 @@ func (*webSocket) wss(res http.ResponseWriter, req *http.Request) {
 	}
 	transfer(logger, conn, cconn)
 }
+
+// wsHandler implements the attacker.WebSocketHandler interface.
+type wsHandler struct{}
+
+func (*wsHandler) HandleWSS(res http.ResponseWriter, req *http.Request) {
+	defaultWebSocket.wss(res, req)
+}

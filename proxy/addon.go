@@ -1,65 +1,9 @@
 package proxy
 
 import (
-	"io"
 	"log/slog"
-	"net/http"
 	"time"
 )
-
-type Addon interface {
-	// A client has connected to mitmproxy. Note that a connection can correspond to multiple HTTP requests.
-	ClientConnected(*ClientConn)
-
-	// A client connection has been closed (either by us or the client).
-	ClientDisconnected(*ClientConn)
-
-	// Mitmproxy has connected to a server.
-	ServerConnected(*ConnContext)
-
-	// A server connection has been closed (either by us or the server).
-	ServerDisconnected(*ConnContext)
-
-	// The TLS handshake with the server has been completed successfully.
-	TLSEstablishedServer(*ConnContext)
-
-	// HTTP request headers were successfully read. At this point, the body is empty.
-	Requestheaders(*Flow)
-
-	// The full HTTP request has been read.
-	Request(*Flow)
-
-	// HTTP response headers were successfully read. At this point, the body is empty.
-	Responseheaders(*Flow)
-
-	// The full HTTP response has been read.
-	Response(*Flow)
-
-	// Stream request body modifier
-	StreamRequestModifier(*Flow, io.Reader) io.Reader
-
-	// Stream response body modifier
-	StreamResponseModifier(*Flow, io.Reader) io.Reader
-
-	// onAccessProxyServer
-	AccessProxyServer(req *http.Request, res http.ResponseWriter)
-}
-
-// BaseAddon do nothing.
-type BaseAddon struct{}
-
-func (*BaseAddon) ClientConnected(*ClientConn)                              {}
-func (*BaseAddon) ClientDisconnected(*ClientConn)                           {}
-func (*BaseAddon) ServerConnected(*ConnContext)                             {}
-func (*BaseAddon) ServerDisconnected(*ConnContext)                          {}
-func (*BaseAddon) TLSEstablishedServer(*ConnContext)                        {}
-func (*BaseAddon) Requestheaders(*Flow)                                     {}
-func (*BaseAddon) Request(*Flow)                                            {}
-func (*BaseAddon) Responseheaders(*Flow)                                    {}
-func (*BaseAddon) Response(*Flow)                                           {}
-func (*BaseAddon) StreamRequestModifier(_ *Flow, in io.Reader) io.Reader    { return in }
-func (*BaseAddon) StreamResponseModifier(_ *Flow, in io.Reader) io.Reader   { return in }
-func (*BaseAddon) AccessProxyServer(_ *http.Request, _ http.ResponseWriter) {}
 
 // LogAddon logs connection and flow events using the global slog logger.
 type LogAddon struct {

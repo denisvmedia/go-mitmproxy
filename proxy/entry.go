@@ -1,15 +1,16 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	"sync"
 
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/proxycontext"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/types"
 )
 
 // wrap tcpListener for remote client.
@@ -25,106 +26,19 @@ func (l *wrapListener) Accept() (net.Conn, error) {
 	}
 
 	proxy := l.proxy
-	wc := newWrapClientConn(c, proxy)
-	connCtx := newConnContext(wc, proxy)
-	wc.connCtx = connCtx
+	wc := conn.NewWrapClientConn(c, proxy)
+
+	// Create conn context - this is now the single source of truth
+	clientConn := conn.NewClientConn(wc)
+	clientConn.CloseChan = wc.CloseChan // Share the close channel
+	connCtx := conn.NewContext(clientConn)
+	wc.ConnCtx = connCtx
 
 	for _, addon := range proxy.addonRegistry.Get() {
 		addon.ClientConnected(connCtx.ClientConn)
 	}
 
 	return wc, nil
-}
-
-// wrap tcpConn for remote client.
-type wrapClientConn struct {
-	net.Conn
-	r       *bufio.Reader
-	proxy   *Proxy
-	connCtx *ConnContext
-
-	closeMu   sync.Mutex
-	closed    bool
-	closeErr  error
-	closeChan chan struct{}
-}
-
-func newWrapClientConn(c net.Conn, proxy *Proxy) *wrapClientConn {
-	return &wrapClientConn{
-		Conn:      c,
-		r:         bufio.NewReader(c),
-		proxy:     proxy,
-		closeChan: make(chan struct{}),
-	}
-}
-
-func (c *wrapClientConn) Peek(n int) ([]byte, error) {
-	return c.r.Peek(n)
-}
-
-func (c *wrapClientConn) Read(data []byte) (int, error) {
-	return c.r.Read(data)
-}
-
-func (c *wrapClientConn) Close() error {
-	c.closeMu.Lock()
-	if c.closed {
-		c.closeMu.Unlock()
-		return c.closeErr
-	}
-	slog.Debug("wrapClientConn close", "remoteAddr", c.connCtx.ClientConn.Conn.RemoteAddr().String())
-
-	c.closed = true
-	c.closeErr = c.Conn.Close()
-	c.closeMu.Unlock()
-	close(c.closeChan)
-
-	for _, addon := range c.proxy.addonRegistry.Get() {
-		addon.ClientDisconnected(c.connCtx.ClientConn)
-	}
-
-	if c.connCtx.ServerConn != nil && c.connCtx.ServerConn.Conn != nil {
-		c.connCtx.ServerConn.Conn.Close()
-	}
-
-	return c.closeErr
-}
-
-// wrap tcpConn for remote server.
-type wrapServerConn struct {
-	net.Conn
-	proxy   *Proxy
-	connCtx *ConnContext
-
-	closeMu  sync.Mutex
-	closed   bool
-	closeErr error
-}
-
-func (c *wrapServerConn) Close() error {
-	c.closeMu.Lock()
-	if c.closed {
-		c.closeMu.Unlock()
-		return c.closeErr
-	}
-	slog.Debug("wrapServerConn close", "remoteAddr", c.connCtx.ClientConn.Conn.RemoteAddr().String())
-
-	c.closed = true
-	c.closeErr = c.Conn.Close()
-	c.closeMu.Unlock()
-
-	for _, addon := range c.proxy.addonRegistry.Get() {
-		addon.ServerDisconnected(c.connCtx)
-	}
-
-	if !c.connCtx.ClientConn.TLS {
-		_ = c.connCtx.ClientConn.Conn.(*wrapClientConn).Conn.(*net.TCPConn).CloseRead()
-	} else if !c.connCtx.closeAfterResponse {
-		// if keep-alive connection close
-		c.connCtx.ClientConn.Conn.Close()
-	}
-
-	return c.closeErr
 }
 
 type entry struct {
@@ -138,7 +52,11 @@ func newEntry(proxy *Proxy) *entry {
 		Addr:    proxy.config.Addr,
 		Handler: e,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			return context.WithValue(ctx, connContextKey, c.(*wrapClientConn).connCtx)
+			if wc, ok := c.(*conn.WrapClientConn); ok {
+				// Store the conn.Context in the shared context key
+				return proxycontext.WithConnContext(ctx, wc.ConnCtx)
+			}
+			return ctx
 		},
 	}
 	return e
@@ -220,15 +138,15 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	)
 
 	shouldIntercept := proxy.shouldIntercept == nil || proxy.shouldIntercept(req)
-	f := newFlow()
-	f.Request = newRequest(req)
-	connCtx, ok := req.Context().Value(connContextKey).(*ConnContext)
+	f := types.NewFlow()
+	f.Request = types.NewRequest(req)
+	connCtx, ok := proxycontext.GetConnContext(req.Context())
 	if !ok {
 		panic("failed to get ConnContext from request context")
 	}
 	f.ConnContext = connCtx
 	f.ConnContext.Intercept = shouldIntercept
-	defer f.finish()
+	defer f.Finish()
 
 	// trigger addon event Requestheaders
 	for _, addon := range proxy.addonRegistry.Get() {
@@ -282,13 +200,13 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 		"host", req.Host,
 	)
 
-	conn, err := proxy.upstreamManager.GetUpstreamConn(req.Context(), req)
+	upstreamConn, err := proxy.upstreamManager.GetUpstreamConn(req.Context(), req)
 	if err != nil {
 		logger.Error("get upstream conn failed", "error", err)
 		res.WriteHeader(502)
 		return
 	}
-	defer conn.Close()
+	defer upstreamConn.Close()
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
@@ -297,7 +215,7 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 	}
 	defer cconn.Close()
 
-	transfer(logger, conn, cconn)
+	transfer(logger, upstreamConn, cconn)
 }
 
 func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
@@ -307,7 +225,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		"host", req.Host,
 	)
 
-	conn, err := proxy.attacker.HTTPSDial(req.Context(), req)
+	serverConn, err := proxy.attacker.HTTPSDial(req.Context(), req)
 	if err != nil {
 		logger.Error("httpsDial failed", "error", err)
 		res.WriteHeader(502)
@@ -316,29 +234,36 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		conn.Close()
+		serverConn.Close()
 		logger.Error("establish connection failed", "error", err)
 		return
 	}
 
-	peek, err := cconn.(*wrapClientConn).Peek(3)
+	wcc, ok := cconn.(*conn.WrapClientConn)
+	if !ok {
+		cconn.Close()
+		serverConn.Close()
+		logger.Error("failed to cast to WrapClientConn")
+		return
+	}
+	peek, err := wcc.Peek(3)
 	if err != nil {
 		cconn.Close()
-		conn.Close()
+		serverConn.Close()
 		logger.Error("peek failed", "error", err)
 		return
 	}
 	if !helper.IsTLS(peek) {
 		// todo: http, ws
-		transfer(logger, conn, cconn)
+		transfer(logger, serverConn, cconn)
 		cconn.Close()
-		conn.Close()
+		serverConn.Close()
 		return
 	}
 
 	// is tls
 	f.ConnContext.ClientConn.TLS = true
-	proxy.attacker.HTTPSTLSDial(req.Context(), cconn, conn)
+	proxy.attacker.HTTPSTLSDial(req.Context(), cconn, serverConn)
 }
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
@@ -354,7 +279,13 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 		return
 	}
 
-	peek, err := cconn.(*wrapClientConn).Peek(3)
+	wcc, ok := cconn.(*conn.WrapClientConn)
+	if !ok {
+		cconn.Close()
+		logger.Error("failed to cast to WrapClientConn")
+		return
+	}
+	peek, err := wcc.Peek(3)
 	if err != nil {
 		cconn.Close()
 		logger.Error("peek failed", "error", err)
@@ -363,14 +294,14 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 
 	if !helper.IsTLS(peek) {
 		// todo: http, ws
-		conn, err := proxy.attacker.HTTPSDial(req.Context(), req)
+		serverConn, err := proxy.attacker.HTTPSDial(req.Context(), req)
 		if err != nil {
 			cconn.Close()
 			logger.Error("httpsDial failed", "error", err)
 			return
 		}
-		transfer(logger, conn, cconn)
-		conn.Close()
+		transfer(logger, serverConn, cconn)
+		serverConn.Close()
 		cconn.Close()
 		return
 	}

@@ -28,3 +28,8 @@ func (c *Config) GetStreamLargeBodies() int64 {
 func (c *Config) GetSslInsecure() bool {
 	return c.SslInsecure
 }
+
+// GetUpstream returns the upstream proxy address.
+func (c *Config) GetUpstream() string {
+	return c.Upstream
+}
