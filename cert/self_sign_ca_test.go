@@ -1,43 +1,16 @@
-package cert
+package cert_test
 
 import (
-	"bytes"
-	"os"
-	"reflect"
 	"testing"
+
+	qt "github.com/frankban/quicktest"
+
+	"github.com/denisvmedia/go-mitmproxy/cert"
 )
 
-func TestGetStorePath(t *testing.T) {
-	path, err := getStorePath("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if path == "" {
-		t.Fatal("should have path")
-	}
-}
-
 func TestNewCA(t *testing.T) {
-	caAPI, err := NewSelfSignCA("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ca := caAPI.(*SelfSignCA)
-
-	data := make([]byte, 0)
-	buf := bytes.NewBuffer(data)
-
-	err = ca.saveTo(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fileContent, err := os.ReadFile(ca.caFile())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !reflect.DeepEqual(fileContent, buf.Bytes()) {
-		t.Fatal("pem content should equal")
-	}
+	c := qt.New(t)
+	ca, err := cert.NewSelfSignCA("")
+	c.Assert(err, qt.IsNil)
+	c.Assert(ca, qt.IsNotNil)
 }

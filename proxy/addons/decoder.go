@@ -1,6 +1,8 @@
-package addon
+package addons
 
-import "github.com/denisvmedia/go-mitmproxy/proxy"
+import (
+	"github.com/denisvmedia/go-mitmproxy/proxy"
+)
 
 // decode content-encoding then respond to client
 

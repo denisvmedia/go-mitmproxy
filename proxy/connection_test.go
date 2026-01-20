@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"crypto/tls"
@@ -7,28 +7,33 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	qt "github.com/frankban/quicktest"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
-func testGetResponse(t *testing.T, endpoint string, client *http.Client) *http.Response {
-	t.Helper()
+func testGetResponse(c *qt.C, endpoint string, client *http.Client) *http.Response {
+	c.Helper()
 	req, err := http.NewRequest("GET", endpoint, nil)
-	handleError(t, err)
+	c.Assert(err, qt.IsNil)
 	if client == nil {
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(req)
-	handleError(t, err)
+	c.Assert(err, qt.IsNil)
 	defer resp.Body.Close()
 	_, err = io.ReadAll(resp.Body)
-	handleError(t, err)
+	c.Assert(err, qt.IsNil)
 	return resp
 }
 
 type testConnectionAddon struct {
-	BaseAddon
+	proxy.BaseAddon
 }
 
-func (*testConnectionAddon) Response(f *Flow) {
+func (*testConnectionAddon) Response(f *proxy.Flow) {
 	tlsStr := "0"
 	if f.ConnContext.ClientConn.TLS {
 		tlsStr = "1"
@@ -43,11 +48,12 @@ func (*testConnectionAddon) Response(f *Flow) {
 }
 
 func TestConnection(t *testing.T) {
+	c := qt.New(t)
 	helper := &testProxyHelper{
 		server:    &http.Server{},
 		proxyAddr: ":29087",
 	}
-	helper.init(t)
+	helper.init(c)
 	helper.server.TLSConfig.NextProtos = []string{"h2"}
 	httpEndpoint := helper.httpEndpoint
 	httpsEndpoint := helper.httpsEndpoint
@@ -63,28 +69,23 @@ func TestConnection(t *testing.T) {
 
 	t.Run("ClientConn state", func(t *testing.T) {
 		t.Run("http", func(t *testing.T) {
+			c := qt.New(t)
 			client := getProxyClient()
-			resp := testGetResponse(t, httpEndpoint, client)
-			if resp.Header.Get("tls") != "0" {
-				t.Fatalf("expected %s, but got %s", "0", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "null" {
-				t.Fatalf("expected %s, but got %s", "null", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "0")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "null")
 		})
 
 		t.Run("https", func(t *testing.T) {
+			c := qt.New(t)
 			client := getProxyClient()
-			resp := testGetResponse(t, httpsEndpoint, client)
-			if resp.Header.Get("tls") != "1" {
-				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "null" {
-				t.Fatalf("expected %s, but got %s", "null", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpsEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "1")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "null")
 		})
 
 		t.Run("h2", func(t *testing.T) {
+			c := qt.New(t)
 			client := &http.Client{
 				Transport: &http.Transport{
 					ForceAttemptHTTP2: true,
@@ -96,28 +97,25 @@ func TestConnection(t *testing.T) {
 					},
 				},
 			}
-			resp := testGetResponse(t, httpsEndpoint, client)
-			if resp.Header.Get("tls") != "1" {
-				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "h2" {
-				t.Fatalf("expected %s, but got %s", "h2", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpsEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "1")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "h2")
 		})
 	})
 }
 
 func TestConnectionOffUpstreamCert(t *testing.T) {
+	c := qt.New(t)
 	helper := &testProxyHelper{
 		server:    &http.Server{},
 		proxyAddr: ":29088",
 	}
-	helper.init(t)
+	helper.init(c)
 	helper.server.TLSConfig.NextProtos = []string{"h2"}
 	httpEndpoint := helper.httpEndpoint
 	httpsEndpoint := helper.httpsEndpoint
 	testProxy := helper.testProxy
-	testProxy.AddAddon(NewUpstreamCertAddon(false))
+	testProxy.AddAddon(addons.NewUpstreamCertAddon(false))
 	testProxy.AddAddon(&testConnectionAddon{})
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
@@ -129,28 +127,23 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 
 	t.Run("ClientConn state", func(t *testing.T) {
 		t.Run("http", func(t *testing.T) {
+			c := qt.New(t)
 			client := getProxyClient()
-			resp := testGetResponse(t, httpEndpoint, client)
-			if resp.Header.Get("tls") != "0" {
-				t.Fatalf("expected %s, but got %s", "0", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "null" {
-				t.Fatalf("expected %s, but got %s", "null", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "0")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "null")
 		})
 
 		t.Run("https", func(t *testing.T) {
+			c := qt.New(t)
 			client := getProxyClient()
-			resp := testGetResponse(t, httpsEndpoint, client)
-			if resp.Header.Get("tls") != "1" {
-				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "null" {
-				t.Fatalf("expected %s, but got %s", "null", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpsEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "1")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "null")
 		})
 
 		t.Run("h2 not support", func(t *testing.T) {
+			c := qt.New(t)
 			client := &http.Client{
 				Transport: &http.Transport{
 					ForceAttemptHTTP2: true,
@@ -162,13 +155,9 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 					},
 				},
 			}
-			resp := testGetResponse(t, httpsEndpoint, client)
-			if resp.Header.Get("tls") != "1" {
-				t.Fatalf("expected %s, but got %s", "1", resp.Header.Get("tls"))
-			}
-			if resp.Header.Get("protocol") != "http/1.1" {
-				t.Fatalf("expected %s, but got %s", "h2", resp.Header.Get("protocol"))
-			}
+			resp := testGetResponse(c, httpsEndpoint, client)
+			c.Assert(resp.Header.Get("tls"), qt.Equals, "1")
+			c.Assert(resp.Header.Get("protocol"), qt.Equals, "http/1.1")
 		})
 	})
 }

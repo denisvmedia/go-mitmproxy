@@ -1,4 +1,4 @@
-package proxy
+package types
 
 import (
 	"encoding/json"
@@ -8,9 +8,11 @@ import (
 	"net/url"
 
 	uuid "github.com/satori/go.uuid"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 )
 
-// flow http request.
+// Request represents an HTTP request in the proxy flow.
 type Request struct {
 	Method string
 	URL    *url.URL
@@ -21,7 +23,8 @@ type Request struct {
 	raw *http.Request
 }
 
-func newRequest(req *http.Request) *Request {
+// NewRequest creates a new Request from an http.Request.
+func NewRequest(req *http.Request) *Request {
 	return &Request{
 		Method: req.Method,
 		URL:    req.URL,
@@ -31,6 +34,7 @@ func newRequest(req *http.Request) *Request {
 	}
 }
 
+// Raw returns the underlying http.Request.
 func (r *Request) Raw() *http.Request {
 	return r.raw
 }
@@ -92,20 +96,20 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// flow http response.
+// Response represents an HTTP response in the proxy flow.
 type Response struct {
 	StatusCode int         `json:"statusCode"`
 	Header     http.Header `json:"header"`
 	Body       []byte      `json:"-"`
 	BodyReader io.Reader
 
-	close bool // connection close
+	Close bool // connection close
 }
 
-// flow.
+// Flow represents a complete HTTP request/response flow.
 type Flow struct {
 	ID          uuid.UUID
-	ConnContext *ConnContext
+	ConnContext *conn.Context
 	Request     *Request
 	Response    *Response
 
@@ -116,18 +120,21 @@ type Flow struct {
 	done              chan struct{}
 }
 
-func newFlow() *Flow {
+// NewFlow creates a new Flow instance.
+func NewFlow() *Flow {
 	return &Flow{
 		ID:   uuid.NewV4(),
 		done: make(chan struct{}),
 	}
 }
 
+// Done returns a channel that is closed when the flow is finished.
 func (f *Flow) Done() <-chan struct{} {
 	return f.done
 }
 
-func (f *Flow) finish() {
+// Finish marks the flow as complete.
+func (f *Flow) Finish() {
 	close(f.done)
 }
 

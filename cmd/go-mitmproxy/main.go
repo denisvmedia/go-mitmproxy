@@ -7,30 +7,31 @@ import (
 	"os"
 	"strings"
 
-	"github.com/denisvmedia/go-mitmproxy/addon"
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
+	"github.com/denisvmedia/go-mitmproxy/version"
 	"github.com/denisvmedia/go-mitmproxy/web"
 )
 
 type Config struct {
 	version bool // show go-mitmproxy version
 
-	Addr         string   // proxy listen addr
-	WebAddr      string   // web interface listen addr
-	SslInsecure  bool     // not verify upstream server SSL/TLS certificates.
-	IgnoreHosts  []string // a list of ignore hosts
-	AllowHosts   []string // a list of allow hosts
-	CertPath     string   // path of generate cert files
-	Debug        int      // debug mode: 1 - print debug log, 2 - show debug from
-	Dump         string   // dump filename
-	DumpLevel    int      // dump level: 0 - header, 1 - header + body
-	Upstream     string   // upstream proxy
-	UpstreamCert bool     // Connect to upstream server to look up certificate details. Default: True
-	MapRemote    string   // map remote config filename
-	MapLocal     string   // map local config filename
-	LogFile      string   // log file path
+	Addr               string   // proxy listen addr
+	WebAddr            string   // web interface listen addr
+	InsecureSkipVerify bool     // not verify upstream server SSL/TLS certificates.
+	IgnoreHosts        []string // a list of ignore hosts
+	AllowHosts         []string // a list of allow hosts
+	CertPath           string   // path of generate cert files
+	Debug              int      // debug mode: 1 - print debug log, 2 - show debug from
+	Dump               string   // dump filename
+	DumpLevel          int      // dump level: 0 - header, 1 - header + body
+	Upstream           string   // upstream proxy
+	UpstreamCert       bool     // Connect to upstream server to look up certificate details. Default: True
+	MapRemote          string   // map remote config filename
+	MapLocal           string   // map local config filename
+	LogFile            string   // log file path
 
 	filename string // read config from the filename
 
@@ -60,25 +61,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	proxyConfig := &proxy.Config{
-		Addr:              config.Addr,
-		StreamLargeBodies: 1024 * 1024 * 5,
-		SslInsecure:       config.SslInsecure,
-		Upstream:          config.Upstream,
+	proxyConfig := proxy.Config{
+		Addr:               config.Addr,
+		StreamLargeBodies:  1024 * 1024 * 5,
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		Upstream:           config.Upstream,
 	}
 
-	p, err := proxy.NewProxyWithDefaults(proxyConfig, ca)
+	p, err := proxy.NewProxy(proxyConfig, ca)
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		os.Exit(1)
 	}
 
 	if config.version {
-		fmt.Println("go-mitmproxy: " + p.Version)
+		fmt.Println("go-mitmproxy version " + version.String())
 		os.Exit(0)
 	}
 
-	slog.Info("go-mitmproxy started", slog.String("version", p.Version))
+	slog.Info("go-mitmproxy started", slog.String("version", version.String()))
 
 	if len(config.IgnoreHosts) > 0 {
 		p.SetShouldInterceptRule(func(req *http.Request) bool {
@@ -92,7 +93,7 @@ func main() {
 	}
 
 	if !config.UpstreamCert {
-		p.AddAddon(proxy.NewUpstreamCertAddon(false))
+		p.AddAddon(addons.NewUpstreamCertAddon(false))
 		slog.Info("UpstreamCert config false")
 	}
 
@@ -104,16 +105,16 @@ func main() {
 
 	if config.LogFile != "" {
 		// Use instance logger with file output
-		p.AddAddon(proxy.NewInstanceLogAddonWithFile(config.Addr, "", config.LogFile))
+		p.AddAddon(addons.NewInstanceLogAddonWithFile(config.Addr, "", config.LogFile))
 		slog.Info("Logging to file", slog.String("file", config.LogFile))
 	} else {
 		// Use default logger
-		p.AddAddon(&proxy.LogAddon{})
+		p.AddAddon(&addons.LogAddon{})
 	}
 	p.AddAddon(web.NewWebAddon(config.WebAddr))
 
 	if config.MapRemote != "" {
-		mapRemote, err := addon.NewMapRemoteFromFile(config.MapRemote)
+		mapRemote, err := addons.NewMapRemoteFromFile(config.MapRemote)
 		if err != nil {
 			slog.Warn("load map remote error", "error", err)
 		} else {
@@ -122,7 +123,7 @@ func main() {
 	}
 
 	if config.MapLocal != "" {
-		mapLocal, err := addon.NewMapLocalFromFile(config.MapLocal)
+		mapLocal, err := addons.NewMapLocalFromFile(config.MapLocal)
 		if err != nil {
 			slog.Warn("load map local error", "error", err)
 		} else {
@@ -131,7 +132,7 @@ func main() {
 	}
 
 	if config.Dump != "" {
-		dumper := addon.NewDumperWithFilename(config.Dump, config.DumpLevel)
+		dumper := addons.NewDumperWithFilename(config.Dump, config.DumpLevel)
 		p.AddAddon(dumper)
 	}
 

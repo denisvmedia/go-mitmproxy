@@ -5,6 +5,7 @@ import (
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
 //
@@ -40,19 +41,19 @@ func main() {
 		return
 	}
 
-	config := &proxy.Config{
+	config := proxy.Config{
 		Addr:              ":9080",
 		StreamLargeBodies: 1024 * 1024 * 5,
 	}
 
-	p, err := proxy.NewProxyWithDefaults(config, ca)
+	p, err := proxy.NewProxy(config, ca)
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		return
 	}
 
 	p.AddAddon(&CloseConn{})
-	p.AddAddon(&proxy.LogAddon{})
+	p.AddAddon(&addons.LogAddon{})
 
 	if err := p.Start(); err != nil {
 		slog.Error("proxy exited", "error", err)

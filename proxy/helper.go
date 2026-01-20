@@ -7,9 +7,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 )
 
-var normalErrMsgs []string = []string{
+var normalErrMsgs = []string{
 	"read: connection reset by peer",
 	"write: broken pipe",
 	"i/o timeout",
@@ -56,9 +58,11 @@ func transfer(logger *slog.Logger, server, client io.ReadWriteCloser) {
 		logger.Debug("server copy end", "error", err)
 		server.Close()
 
-		if clientConn, ok := client.(*wrapClientConn); ok {
-			err := clientConn.Conn.(*net.TCPConn).CloseRead()
-			logger.Debug("clientConn.Conn.(*net.TCPConn).CloseRead()", "error", err)
+		if clientConn, ok := client.(*conn.WrapClientConn); ok {
+			if tcpConn, ok := clientConn.Conn.(*net.TCPConn); ok {
+				err := tcpConn.CloseRead()
+				logger.Debug("clientConn.Conn.(*net.TCPConn).CloseRead()", "error", err)
+			}
 		}
 
 		select {

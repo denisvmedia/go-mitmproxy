@@ -1,13 +1,28 @@
-package addon
+// This file contains tests that require access to internal/unexported types and methods.
+//
+// Justification:
+// - mapRemoteItem: Tests the internal matching and replacement logic for map remote rules
+// - mapFrom: Tests the internal request matching logic
+// - match() and replace() methods: Test critical internal behavior for URL rewriting
+//
+// These tests verify the core logic of the MapRemote addon that cannot be adequately
+// tested through the public API alone. The internal matching and replacement algorithms
+// need thorough unit testing to ensure correctness across various edge cases.
+
+package addons
 
 import (
 	"net/url"
 	"testing"
 
+	qt "github.com/frankban/quicktest"
+
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 func TestMapItemMatch(t *testing.T) {
+	c := qt.New(t)
+
 	req := &proxy.Request{
 		Method: "GET",
 		URL: &url.URL{
@@ -30,9 +45,7 @@ func TestMapItemMatch(t *testing.T) {
 		Enable: true,
 	}
 	result := item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// empty Protocol and empty Method match
 	item.From = &mapFrom{
@@ -42,9 +55,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// empty Host match
 	item.From = &mapFrom{
@@ -54,9 +65,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/*",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// all empty match
 	item.From = &mapFrom{
@@ -66,9 +75,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "",
 	}
 	result = item.match(req)
-	if !result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsTrue)
 
 	// test not match
 
@@ -80,9 +87,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Host
 	item.From = &mapFrom{
@@ -92,9 +97,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Method
 	item.From = &mapFrom{
@@ -104,9 +107,7 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/path/to/resource",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 
 	// diff Path
 	item.From = &mapFrom{
@@ -116,12 +117,12 @@ func TestMapItemMatch(t *testing.T) {
 		Path:     "/hello/world",
 	}
 	result = item.match(req)
-	if result {
-		t.Errorf("Expected true, but got false")
-	}
+	c.Assert(result, qt.IsFalse)
 }
 
 func TestMapItemReplace(t *testing.T) {
+	c := qt.New(t)
+
 	rawreq := func() *proxy.Request {
 		return &proxy.Request{
 			Method: "GET",
@@ -149,9 +150,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req := item.replace(rawreq())
 	should := "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -169,9 +168,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -189,9 +186,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/world"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -209,9 +204,7 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/path/to/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 
 	item = &mapRemoteItem{
 		From: &mapFrom{
@@ -229,7 +222,5 @@ func TestMapItemReplace(t *testing.T) {
 	}
 	req = item.replace(rawreq())
 	should = "http://hello.com/world/resource"
-	if req.URL.String() != should {
-		t.Errorf("Expected %v, but got %v", should, req.URL.String())
-	}
+	c.Assert(req.URL.String(), qt.Equals, should)
 }

@@ -1,4 +1,4 @@
-package proxy
+package types
 
 import (
 	"bytes"
@@ -22,6 +22,7 @@ var textContentTypes = []string{
 	"json",
 }
 
+// IsTextContentType checks if the response has a text content type.
 func (r *Response) IsTextContentType() bool {
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {
@@ -35,6 +36,7 @@ func (r *Response) IsTextContentType() bool {
 	return false
 }
 
+// DecodedBody returns the decoded request body.
 func (req *Request) DecodedBody() ([]byte, error) {
 	if len(req.Body) == 0 {
 		return req.Body, nil
@@ -54,6 +56,7 @@ func (req *Request) DecodedBody() ([]byte, error) {
 	return decodedBody, nil
 }
 
+// DecodedBody returns the decoded response body.
 func (r *Response) DecodedBody() ([]byte, error) {
 	if len(r.Body) == 0 {
 		return r.Body, nil
@@ -73,6 +76,7 @@ func (r *Response) DecodedBody() ([]byte, error) {
 	return decodedBody, nil
 }
 
+// ReplaceToDecodedBody replaces the body with the decoded version.
 func (r *Response) ReplaceToDecodedBody() {
 	body, err := r.DecodedBody()
 	if err != nil {

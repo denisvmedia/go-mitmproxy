@@ -90,16 +90,22 @@ package main
 import (
 	"log"
 
+	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 func main() {
-	opts := &proxy.Options{
+	ca, err := cert.NewSelfSignCA("")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config := proxy.Config{
 		Addr:              ":9080",
 		StreamLargeBodies: 1024 * 1024 * 5,
 	}
 
-	p, err := proxy.NewProxy(opts)
+	p, err := proxy.NewProxy(config, ca)
 	if err != nil {
 		log.Fatal(err)
 	}
