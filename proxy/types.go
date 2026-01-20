@@ -32,4 +32,18 @@ type (
 
 	// BaseAddon provides default no-op implementations of all Addon methods.
 	BaseAddon = types.BaseAddon
+
+	// UpstreamManager defines the interface for managing upstream proxy connections.
+	UpstreamManager = types.UpstreamManager
+
+	// ClientFactory is responsible for creating HTTP clients for different scenarios.
+	ClientFactory = types.ClientFactory
+
+	// DefaultClientFactory is the default implementation of ClientFactory.
+	DefaultClientFactory = types.DefaultClientFactory
 )
+
+// NewDefaultClientFactory creates a new DefaultClientFactory.
+func NewDefaultClientFactory() *DefaultClientFactory {
+	return types.NewDefaultClientFactory()
+}

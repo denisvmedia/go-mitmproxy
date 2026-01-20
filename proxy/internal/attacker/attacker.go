@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"golang.org/x/net/http2"
@@ -18,24 +17,9 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/proxycontext"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/types"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/upstream"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/websocket"
 )
-
-// Config defines the configuration interface for the attacker.
-type Config interface {
-	GetStreamLargeBodies() int64
-	GetSslInsecure() bool
-}
-
-// UpstreamManager defines the interface for upstream connection management.
-type UpstreamManager interface {
-	GetUpstreamConn(ctx context.Context, req *http.Request) (net.Conn, error)
-	RealUpstreamProxy() func(*http.Request) (*url.URL, error)
-}
-
-// WebSocketHandler defines the interface for WebSocket handling.
-type WebSocketHandler interface {
-	HandleWSS(res http.ResponseWriter, req *http.Request)
-}
 
 // listener is a custom net.Listener implementation that accepts connections
 // through a channel. It is used internally by the Attacker to handle intercepted
@@ -72,70 +56,82 @@ type attackerConn struct {
 // and modifying HTTP/HTTPS traffic. It manages TLS handshakes, certificate generation,
 // and proxying of requests between clients and servers.
 type Attacker struct {
-	ca              cert.CA
-	upstreamManager UpstreamManager
-	addonRegistry   types.AddonRegistry
-	config          Config
-	wsHandler       WebSocketHandler
-	server          *http.Server
-	h2Server        *http2.Server
-	client          *http.Client
-	listener        *listener
+	ca                 cert.CA
+	upstreamManager    *upstream.Manager
+	addonRegistry      types.AddonRegistry
+	streamLargeBodies  int64
+	insecureSkipVerify bool
+	wsHandler          *websocket.Handler
+	server             *http.Server
+	h2Server           *http2.Server
+	client             *http.Client
+	listener           *listener
+	clientFactory      types.ClientFactory
 }
 
 // Args contains all dependencies required by the Attacker.
 type Args struct {
 	CA              cert.CA
-	UpstreamManager UpstreamManager
+	UpstreamManager *upstream.Manager
 	AddonRegistry   types.AddonRegistry
-	Config          Config
-	WSHandler       WebSocketHandler
+
+	// StreamLargeBodies is the threshold in bytes for switching to streaming mode.
+	// Bodies larger than this will be streamed instead of buffered.
+	StreamLargeBodies int64
+
+	// InsecureSkipVerify controls whether to skip SSL certificate verification
+	// when connecting to upstream servers.
+	InsecureSkipVerify bool
+
+	WSHandler *websocket.Handler
+
+	// ClientFactory is used to create HTTP clients for different scenarios.
+	// If nil, DefaultClientFactory will be used.
+	ClientFactory types.ClientFactory
 }
 
 // New creates a new Attacker instance with the given dependencies.
 // It initializes the HTTP client, HTTP server, and HTTP/2 server.
 // The attacker is configured to handle both HTTP/1.1 and HTTP/2 connections.
-func New(deps Args) (*Attacker, error) {
-	a := &Attacker{
-		ca:              deps.CA,
-		upstreamManager: deps.UpstreamManager,
-		addonRegistry:   deps.AddonRegistry,
-		config:          deps.Config,
-		wsHandler:       deps.WSHandler,
+func New(args Args) (*Attacker, error) {
+	// Use default client factory if none provided
+	clientFactory := args.ClientFactory
+	if clientFactory == nil {
+		clientFactory = NewDefaultClientFactory()
+	}
+
+	atk := &Attacker{
+		ca:                 args.CA,
+		upstreamManager:    args.UpstreamManager,
+		addonRegistry:      args.AddonRegistry,
+		streamLargeBodies:  args.StreamLargeBodies,
+		insecureSkipVerify: args.InsecureSkipVerify,
+		wsHandler:          args.WSHandler,
+		clientFactory:      clientFactory,
 		listener: &listener{
 			connChan: make(chan net.Conn),
 		},
 	}
 
-	a.client = &http.Client{
-		Transport: &http.Transport{
-			Proxy:              deps.UpstreamManager.RealUpstreamProxy(),
-			ForceAttemptHTTP2:  true,
-			DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: deps.Config.GetSslInsecure(),
-				KeyLogWriter:       helper.GetTLSKeyLogWriter(),
-			},
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			// Disable automatic redirects
-			return http.ErrUseLastResponse
-		},
-	}
+	// Client #1: Main fallback/separate client
+	// Purpose: Used when the request has been modified (different host/scheme) or when
+	// UseSeparateClient is set. This client goes through the upstream proxy and supports
+	// HTTP/2. It creates new connections rather than reusing existing ones.
+	atk.client = atk.clientFactory.CreateMainClient(atk.upstreamManager, args.InsecureSkipVerify)
 
-	a.server = &http.Server{
-		Handler: a,
+	atk.server = &http.Server{
+		Handler: atk,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			return proxycontext.WithConnContext(ctx, c.(*attackerConn).connCtx)
 		},
 	}
 
-	a.h2Server = &http2.Server{
+	atk.h2Server = &http2.Server{
 		MaxConcurrentStreams: 100, // todo: wait for remote server setting
 		NewWriteScheduler:    func() http2.WriteScheduler { return http2.NewPriorityWriteScheduler(nil) },
 	}
 
-	return a, nil
+	return atk, nil
 }
 
 // Start begins serving HTTP connections through the attacker's listener.
@@ -177,18 +173,11 @@ func (a *Attacker) serveConn(clientTLSConn *tls.Conn, connCtx *conn.Context) {
 	connCtx.ClientConn.NegotiatedProtocol = clientTLSConn.ConnectionState().NegotiatedProtocol
 
 	if connCtx.ClientConn.NegotiatedProtocol == "h2" && connCtx.ServerConn != nil {
-		connCtx.ServerConn.Client = &http.Client{
-			Transport: &http2.Transport{
-				DialTLSContext: func(_ context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
-					return connCtx.ServerConn.TLSConn, nil
-				},
-				DisableCompression: true,
-			},
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				// Disable automatic redirects
-				return http.ErrUseLastResponse
-			},
-		}
+		// Client #2: HTTP/2 server connection client
+		// Purpose: Created specifically for HTTP/2 connections when the negotiated protocol
+		// is "h2". Uses http2.Transport and reuses the existing TLS connection
+		// (connCtx.ServerConn.TLSConn) rather than creating new connections.
+		connCtx.ServerConn.Client = a.clientFactory.CreateHTTP2Client(connCtx.ServerConn.TLSConn)
 
 		ctx := proxycontext.WithConnContext(context.Background(), connCtx)
 		ctx, cancel := context.WithCancel(ctx)
@@ -250,19 +239,11 @@ func (a *Attacker) InitHTTPDialFn(req *http.Request) {
 		serverConn := conn.NewServerConn()
 		serverConn.Conn = cw
 		serverConn.Address = addr
-		serverConn.Client = &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-					return cw, nil
-				},
-				ForceAttemptHTTP2:  false, // disable http2
-				DisableCompression: true,  // To get the original response from the server, set Transport.DisableCompression to true.
-			},
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				// Disable automatic redirects
-				return http.ErrUseLastResponse
-			},
-		}
+		// Client #3: Plain HTTP connection client
+		// Purpose: Created for plain HTTP (non-TLS) connections. Explicitly disables HTTP/2
+		// and reuses the existing plain connection (cw) via custom DialContext function.
+		// This avoids creating new connections for each request on the same HTTP connection.
+		serverConn.Client = a.clientFactory.CreatePlainHTTPClient(cw)
 
 		connCtx.ServerConn = serverConn
 		for _, addon := range a.addonRegistry.Get() {
@@ -281,7 +262,7 @@ func (a *Attacker) serverTLSHandshake(ctx context.Context, connCtx *conn.Context
 	serverConn := connCtx.ServerConn
 
 	serverTLSConfig := &tls.Config{
-		InsecureSkipVerify: a.config.GetSslInsecure(),
+		InsecureSkipVerify: a.insecureSkipVerify,
 		KeyLogWriter:       helper.GetTLSKeyLogWriter(),
 		ServerName:         clientHello.ServerName,
 		NextProtos:         clientHello.SupportedProtos,
@@ -313,19 +294,11 @@ func (a *Attacker) serverTLSHandshake(ctx context.Context, connCtx *conn.Context
 		addon.TLSEstablishedServer(connCtx)
 	}
 
-	serverConn.Client = &http.Client{
-		Transport: &http.Transport{
-			DialTLSContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return serverTLSConn, nil
-			},
-			ForceAttemptHTTP2:  true,
-			DisableCompression: true, // To get the original response from the server, set Transport.DisableCompression to true.
-		},
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			// Disable automatic redirects
-			return http.ErrUseLastResponse
-		},
-	}
+	// Client #4: HTTPS/TLS connection client
+	// Purpose: Created for HTTPS connections after TLS handshake. Reuses the established
+	// TLS connection (serverTLSConn) via custom DialTLSContext function and allows HTTP/2
+	// negotiation. This maintains persistent connections to upstream servers.
+	serverConn.Client = a.clientFactory.CreateHTTPSClient(serverTLSConn)
 
 	return nil
 }
@@ -595,7 +568,7 @@ func (a *Attacker) readResponseBody(f *types.Flow, proxyRes *http.Response, logg
 		return resBody, true
 	}
 
-	streamThreshold := a.config.GetStreamLargeBodies()
+	streamThreshold := a.streamLargeBodies
 	resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, streamThreshold)
 	resBody = r
 	if err != nil {
@@ -690,7 +663,7 @@ func (a *Attacker) readRequestBody(f *types.Flow, req *http.Request, logger *slo
 		return reqBody, true
 	}
 
-	streamThreshold := a.config.GetStreamLargeBodies()
+	streamThreshold := a.streamLargeBodies
 	reqBuf, r, err := helper.ReaderToBuffer(req.Body, streamThreshold)
 	reqBody = r
 	if err != nil {

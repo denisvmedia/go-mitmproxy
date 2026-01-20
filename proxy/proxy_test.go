@@ -93,13 +93,13 @@ func (hlp *testProxyHelper) init(t *testing.T) {
 	proxyCA, err := cert.NewSelfSignCA("")
 	handleError(t, err)
 
-	config := &Config{
-		Addr:        hlp.proxyAddr, // some random port
-		SslInsecure: true,
+	config := Config{
+		Addr:               hlp.proxyAddr, // some random port
+		InsecureSkipVerify: true,
 	}
 
 	var testProxy *Proxy
-	testProxy, err = NewProxyWithDefaults(config, proxyCA)
+	testProxy, err = NewProxy(config, proxyCA)
 	handleError(t, err)
 	testProxy.AddAddon(&interceptAddon{})
 	testOrderAddonInstance := &testOrderAddon{

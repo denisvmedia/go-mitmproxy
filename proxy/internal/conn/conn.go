@@ -95,6 +95,3 @@ func NewContext(clientConn *ClientConn) *Context {
 func (c *Context) ID() uuid.UUID {
 	return c.ClientConn.ID
 }
-
-// ContextKey is the key for storing Context in context.Context.
-var ContextKey = new(struct{})

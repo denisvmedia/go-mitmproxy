@@ -17,20 +17,20 @@ import (
 type Config struct {
 	version bool // show go-mitmproxy version
 
-	Addr         string   // proxy listen addr
-	WebAddr      string   // web interface listen addr
-	SslInsecure  bool     // not verify upstream server SSL/TLS certificates.
-	IgnoreHosts  []string // a list of ignore hosts
-	AllowHosts   []string // a list of allow hosts
-	CertPath     string   // path of generate cert files
-	Debug        int      // debug mode: 1 - print debug log, 2 - show debug from
-	Dump         string   // dump filename
-	DumpLevel    int      // dump level: 0 - header, 1 - header + body
-	Upstream     string   // upstream proxy
-	UpstreamCert bool     // Connect to upstream server to look up certificate details. Default: True
-	MapRemote    string   // map remote config filename
-	MapLocal     string   // map local config filename
-	LogFile      string   // log file path
+	Addr               string   // proxy listen addr
+	WebAddr            string   // web interface listen addr
+	InsecureSkipVerify bool     // not verify upstream server SSL/TLS certificates.
+	IgnoreHosts        []string // a list of ignore hosts
+	AllowHosts         []string // a list of allow hosts
+	CertPath           string   // path of generate cert files
+	Debug              int      // debug mode: 1 - print debug log, 2 - show debug from
+	Dump               string   // dump filename
+	DumpLevel          int      // dump level: 0 - header, 1 - header + body
+	Upstream           string   // upstream proxy
+	UpstreamCert       bool     // Connect to upstream server to look up certificate details. Default: True
+	MapRemote          string   // map remote config filename
+	MapLocal           string   // map local config filename
+	LogFile            string   // log file path
 
 	filename string // read config from the filename
 
@@ -60,14 +60,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	proxyConfig := &proxy.Config{
-		Addr:              config.Addr,
-		StreamLargeBodies: 1024 * 1024 * 5,
-		SslInsecure:       config.SslInsecure,
-		Upstream:          config.Upstream,
+	proxyConfig := proxy.Config{
+		Addr:               config.Addr,
+		StreamLargeBodies:  1024 * 1024 * 5,
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		Upstream:           config.Upstream,
 	}
 
-	p, err := proxy.NewProxyWithDefaults(proxyConfig, ca)
+	p, err := proxy.NewProxy(proxyConfig, ca)
 	if err != nil {
 		slog.Error("failed to create proxy", "error", err)
 		os.Exit(1)

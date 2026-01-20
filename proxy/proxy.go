@@ -9,22 +9,17 @@ import (
 	"net/url"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/addonregistry"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/attacker"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/upstream"
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/websocket"
 )
-
-// Options contains settings for creating a CA.
-// This is kept for backward compatibility with the NewCA function.
-type Options struct {
-	CaRootPath string
-	NewCaFunc  func() (cert.CA, error) // Function to create CA
-}
 
 type Proxy struct {
 	Version         string
-	config          *Config
-	addonRegistry   *AddonRegistry
+	config          Config
+	addonRegistry   *addonregistry.Registry
 	upstreamManager *upstream.Manager
 
 	entry           *entry
@@ -34,12 +29,28 @@ type Proxy struct {
 	authProxy       func(res http.ResponseWriter, req *http.Request) (bool, error)
 }
 
-// NewProxy creates a new Proxy with the given dependencies.
-// All dependencies must be created and configured before calling this function.
-// For a simpler API with default configuration, use NewProxyWithDefaults.
-func NewProxy(config *Config, ca cert.CA, addonRegistry *AddonRegistry, upstreamManager *upstream.Manager, atk *attacker.Attacker) (*Proxy, error) {
+// NewProxy creates a new Proxy with the given configuration and CA.
+// This function creates all internal dependencies with default settings.
+func NewProxy(config Config, ca cert.CA) (*Proxy, error) {
+	// Set default for StreamLargeBodies if not specified
 	if config.StreamLargeBodies <= 0 {
 		config.StreamLargeBodies = 1024 * 1024 * 5 // default: 5mb
+	}
+
+	addonRegistry := addonregistry.New()
+	upstreamManager := upstream.NewManager(config.Upstream, config.InsecureSkipVerify)
+	wsHandler := websocket.New()
+
+	atk, err := attacker.New(attacker.Args{
+		CA:                 ca,
+		UpstreamManager:    upstreamManager,
+		AddonRegistry:      addonRegistry,
+		StreamLargeBodies:  config.StreamLargeBodies,
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		WSHandler:          wsHandler,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	proxy := &Proxy{
@@ -54,27 +65,6 @@ func NewProxy(config *Config, ca cert.CA, addonRegistry *AddonRegistry, upstream
 	proxy.entry = newEntry(proxy)
 
 	return proxy, nil
-}
-
-// NewProxyWithDefaults creates a new Proxy with default UpstreamManager and Attacker.
-// This is a convenience function for simple use cases. For more control over
-// UpstreamManager and Attacker configuration, create them separately and use NewProxy.
-func NewProxyWithDefaults(config *Config, ca cert.CA) (*Proxy, error) {
-	addonRegistry := NewAddonRegistry()
-	upstreamManager := upstream.NewManager(config)
-
-	atk, err := attacker.New(attacker.Args{
-		CA:              ca,
-		UpstreamManager: upstreamManager,
-		AddonRegistry:   addonRegistry,
-		Config:          config,
-		WSHandler:       &wsHandler{},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return NewProxy(config, ca, addonRegistry, upstreamManager, atk)
 }
 
 func (p *Proxy) AddAddon(addon Addon) {

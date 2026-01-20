@@ -10,24 +10,28 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/proxycontext"
 )
 
-// Config defines the configuration interface for upstream connections.
-type Config interface {
-	GetUpstream() string
-	GetSslInsecure() bool
-}
-
 // Manager handles upstream proxy connections and configuration.
 // It manages the logic for connecting to upstream servers and determining
 // which proxy to use for each request.
 type Manager struct {
-	config        Config
+	// upstream is the upstream proxy address (e.g., "http://proxy:8080").
+	// If empty, the manager will use environment variables (HTTP_PROXY, HTTPS_PROXY).
+	upstream string
+
+	// sslInsecure controls whether to skip SSL certificate verification
+	// when connecting to upstream servers.
+	sslInsecure bool
+
 	upstreamProxy func(*http.Request) (*url.URL, error)
 }
 
 // NewManager creates a new Manager with the given configuration.
-func NewManager(config Config) *Manager {
+// upstream is the upstream proxy address. If empty, environment variables will be used.
+// sslInsecure controls whether to skip SSL certificate verification.
+func NewManager(upstream string, sslInsecure bool) *Manager {
 	return &Manager{
-		config: config,
+		upstream:    upstream,
+		sslInsecure: sslInsecure,
 	}
 }
 
@@ -49,7 +53,7 @@ func (m *Manager) GetUpstreamConn(ctx context.Context, req *http.Request) (net.C
 	var conn net.Conn
 	address := helper.CanonicalAddr(req.URL)
 	if proxyURL != nil {
-		conn, err = helper.GetProxyConn(ctx, proxyURL, address, m.config.GetSslInsecure())
+		conn, err = helper.GetProxyConn(ctx, proxyURL, address, m.sslInsecure)
 	} else {
 		conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
@@ -59,15 +63,14 @@ func (m *Manager) GetUpstreamConn(ctx context.Context, req *http.Request) (net.C
 // GetUpstreamProxyURL returns the upstream proxy URL for a given request.
 // It checks in order:
 // 1. Custom upstream proxy function (if set via SetUpstreamProxy)
-// 2. Config.Upstream (if configured)
+// 2. upstream field (if configured)
 // 3. Environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
 func (m *Manager) GetUpstreamProxyURL(req *http.Request) (*url.URL, error) {
 	if m.upstreamProxy != nil {
 		return m.upstreamProxy(req)
 	}
-	upstream := m.config.GetUpstream()
-	if len(upstream) > 0 {
-		return url.Parse(upstream)
+	if len(m.upstream) > 0 {
+		return url.Parse(m.upstream)
 	}
 	cReq := &http.Request{URL: &url.URL{Scheme: "https", Host: req.Host}}
 	return http.ProxyFromEnvironment(cReq)

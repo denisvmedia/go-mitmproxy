@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-var normalErrMsgs []string = []string{
+var normalErrMsgs = []string{
 	"read: connection reset by peer",
 	"write: broken pipe",
 	"i/o timeout",
