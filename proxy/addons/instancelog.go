@@ -1,42 +1,44 @@
-package proxy
+package addons
 
 import (
 	"time"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 // InstanceLogAddon logs with instance identification.
 type InstanceLogAddon struct {
-	BaseAddon
-	logger *InstanceLogger
+	proxy.BaseAddon
+	logger *proxy.InstanceLogger
 }
 
 // NewInstanceLogAddonWithFile creates a new instance-aware log addon with file output.
 func NewInstanceLogAddonWithFile(addr, instanceName, logFilePath string) *InstanceLogAddon {
 	return &InstanceLogAddon{
-		logger: NewInstanceLoggerWithFile(addr, instanceName, logFilePath),
+		logger: proxy.NewInstanceLoggerWithFile(addr, instanceName, logFilePath),
 	}
 }
 
 // SetLogger allows setting a custom instance logger.
-func (adn *InstanceLogAddon) SetLogger(logger *InstanceLogger) {
+func (adn *InstanceLogAddon) SetLogger(logger *proxy.InstanceLogger) {
 	adn.logger = logger
 }
 
-func (adn *InstanceLogAddon) ClientConnected(client *ClientConn) {
+func (adn *InstanceLogAddon) ClientConnected(client *proxy.ClientConn) {
 	adn.logger.WithFields(map[string]any{
 		"client_addr": client.Conn.RemoteAddr().String(),
 		"event":       "client_connected",
 	}).Info("Client connected")
 }
 
-func (adn *InstanceLogAddon) ClientDisconnected(client *ClientConn) {
+func (adn *InstanceLogAddon) ClientDisconnected(client *proxy.ClientConn) {
 	adn.logger.WithFields(map[string]any{
 		"client_addr": client.Conn.RemoteAddr().String(),
 		"event":       "client_disconnected",
 	}).Info("Client disconnected")
 }
 
-func (adn *InstanceLogAddon) ServerConnected(connCtx *ConnContext) {
+func (adn *InstanceLogAddon) ServerConnected(connCtx *proxy.ConnContext) {
 	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
@@ -46,7 +48,7 @@ func (adn *InstanceLogAddon) ServerConnected(connCtx *ConnContext) {
 	}).Info("Server connected")
 }
 
-func (adn *InstanceLogAddon) ServerDisconnected(connCtx *ConnContext) {
+func (adn *InstanceLogAddon) ServerDisconnected(connCtx *proxy.ConnContext) {
 	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
@@ -57,7 +59,7 @@ func (adn *InstanceLogAddon) ServerDisconnected(connCtx *ConnContext) {
 	}).Info("Server disconnected")
 }
 
-func (adn *InstanceLogAddon) Requestheaders(f *Flow) {
+func (adn *InstanceLogAddon) Requestheaders(f *proxy.Flow) {
 	start := time.Now()
 
 	adn.logger.WithFields(map[string]any{
@@ -91,7 +93,7 @@ func (adn *InstanceLogAddon) Requestheaders(f *Flow) {
 	}()
 }
 
-func (adn *InstanceLogAddon) TLSEstablishedServer(connCtx *ConnContext) {
+func (adn *InstanceLogAddon) TLSEstablishedServer(connCtx *proxy.ConnContext) {
 	adn.logger.WithFields(map[string]any{
 		"client_addr": connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"server_addr": connCtx.ServerConn.Address,
@@ -99,7 +101,7 @@ func (adn *InstanceLogAddon) TLSEstablishedServer(connCtx *ConnContext) {
 	}).Debug("TLS connection established with server")
 }
 
-func (adn *InstanceLogAddon) Request(f *Flow) {
+func (adn *InstanceLogAddon) Request(f *proxy.Flow) {
 	bodyLen := 0
 	if f.Request.Body != nil {
 		bodyLen = len(f.Request.Body)
@@ -114,7 +116,7 @@ func (adn *InstanceLogAddon) Request(f *Flow) {
 	}).Debug("Full request received")
 }
 
-func (adn *InstanceLogAddon) Response(f *Flow) {
+func (adn *InstanceLogAddon) Response(f *proxy.Flow) {
 	bodyLen := 0
 	if f.Response != nil && f.Response.Body != nil {
 		bodyLen = len(f.Response.Body)

@@ -1,24 +1,26 @@
-package proxy
+package addons
 
 import (
 	"log/slog"
 	"time"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
 )
 
 // LogAddon logs connection and flow events using the global slog logger.
 type LogAddon struct {
-	BaseAddon
+	proxy.BaseAddon
 }
 
-func (*LogAddon) ClientConnected(client *ClientConn) {
+func (*LogAddon) ClientConnected(client *proxy.ClientConn) {
 	slog.Info("client connected", "remoteAddr", client.Conn.RemoteAddr().String())
 }
 
-func (*LogAddon) ClientDisconnected(client *ClientConn) {
+func (*LogAddon) ClientDisconnected(client *proxy.ClientConn) {
 	slog.Info("client disconnected", "remoteAddr", client.Conn.RemoteAddr().String())
 }
 
-func (*LogAddon) ServerConnected(connCtx *ConnContext) {
+func (*LogAddon) ServerConnected(connCtx *proxy.ConnContext) {
 	slog.Info("server connected",
 		"clientAddr", connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"serverAddr", connCtx.ServerConn.Address,
@@ -27,7 +29,7 @@ func (*LogAddon) ServerConnected(connCtx *ConnContext) {
 	)
 }
 
-func (*LogAddon) ServerDisconnected(connCtx *ConnContext) {
+func (*LogAddon) ServerDisconnected(connCtx *proxy.ConnContext) {
 	slog.Info("server disconnected",
 		"clientAddr", connCtx.ClientConn.Conn.RemoteAddr().String(),
 		"serverAddr", connCtx.ServerConn.Address,
@@ -37,7 +39,7 @@ func (*LogAddon) ServerDisconnected(connCtx *ConnContext) {
 	)
 }
 
-func (*LogAddon) Requestheaders(f *Flow) {
+func (*LogAddon) Requestheaders(f *proxy.Flow) {
 	slog.Debug("request headers",
 		"clientAddr", f.ConnContext.ClientConn.Conn.RemoteAddr().String(),
 		"method", f.Request.Method,
@@ -63,17 +65,4 @@ func (*LogAddon) Requestheaders(f *Flow) {
 			"durationMs", time.Since(start).Milliseconds(),
 		)
 	}()
-}
-
-type UpstreamCertAddon struct {
-	BaseAddon
-	UpstreamCert bool // Connect to upstream server to look up certificate details.
-}
-
-func NewUpstreamCertAddon(upstreamCert bool) *UpstreamCertAddon {
-	return &UpstreamCertAddon{UpstreamCert: upstreamCert}
-}
-
-func (adn *UpstreamCertAddon) ClientConnected(conn *ClientConn) {
-	conn.UpstreamCert = adn.UpstreamCert
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
 //
@@ -52,7 +53,7 @@ func main() {
 	}
 
 	p.AddAddon(&CloseConn{})
-	p.AddAddon(&proxy.LogAddon{})
+	p.AddAddon(&addons.LogAddon{})
 
 	if err := p.Start(); err != nil {
 		slog.Error("proxy exited", "error", err)

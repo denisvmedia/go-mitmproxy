@@ -1,4 +1,4 @@
-package attacker
+package attacker_test
 
 import (
 	"crypto/tls"
@@ -8,6 +8,7 @@ import (
 
 	qt "github.com/frankban/quicktest"
 
+	"github.com/denisvmedia/go-mitmproxy/proxy/internal/attacker"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/types"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/upstream"
 )
@@ -18,7 +19,7 @@ type mockConn struct {
 }
 
 func TestDefaultClientFactory(t *testing.T) {
-	factory := NewDefaultClientFactory()
+	factory := attacker.NewDefaultClientFactory()
 
 	t.Run("CreateMainClient", func(t *testing.T) {
 		c := qt.New(t)

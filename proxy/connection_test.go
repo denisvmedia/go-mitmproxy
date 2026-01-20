@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"crypto/tls"
@@ -9,6 +9,9 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
+
+	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
 func testGetResponse(c *qt.C, endpoint string, client *http.Client) *http.Response {
@@ -27,10 +30,10 @@ func testGetResponse(c *qt.C, endpoint string, client *http.Client) *http.Respon
 }
 
 type testConnectionAddon struct {
-	BaseAddon
+	proxy.BaseAddon
 }
 
-func (*testConnectionAddon) Response(f *Flow) {
+func (*testConnectionAddon) Response(f *proxy.Flow) {
 	tlsStr := "0"
 	if f.ConnContext.ClientConn.TLS {
 		tlsStr = "1"
@@ -112,7 +115,7 @@ func TestConnectionOffUpstreamCert(t *testing.T) {
 	httpEndpoint := helper.httpEndpoint
 	httpsEndpoint := helper.httpsEndpoint
 	testProxy := helper.testProxy
-	testProxy.AddAddon(NewUpstreamCertAddon(false))
+	testProxy.AddAddon(addons.NewUpstreamCertAddon(false))
 	testProxy.AddAddon(&testConnectionAddon{})
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()

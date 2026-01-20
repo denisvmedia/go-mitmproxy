@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
@@ -17,6 +17,8 @@ import (
 	qt "github.com/frankban/quicktest"
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
+	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
 func testSendRequest(c *qt.C, endpoint string, client *http.Client, bodyWant string) {
@@ -44,7 +46,7 @@ type testProxyHelper struct {
 	httpEndpoint           string
 	httpsEndpoint          string
 	testOrderAddonInstance *testOrderAddon
-	testProxy              *Proxy
+	testProxy              *proxy.Proxy
 	getProxyClient         func() *http.Client
 }
 
@@ -86,13 +88,13 @@ func (hlp *testProxyHelper) init(c *qt.C) {
 	proxyCA, err := cert.NewSelfSignCA("")
 	c.Assert(err, qt.IsNil)
 
-	config := Config{
+	config := proxy.Config{
 		Addr:               hlp.proxyAddr, // some random port
 		InsecureSkipVerify: true,
 	}
 
-	var testProxy *Proxy
-	testProxy, err = NewProxy(config, proxyCA)
+	var testProxy *proxy.Proxy
+	testProxy, err = proxy.NewProxy(config, proxyCA)
 	c.Assert(err, qt.IsNil)
 	testProxy.AddAddon(&interceptAddon{})
 	testOrderAddonInstance := &testOrderAddon{
@@ -119,22 +121,22 @@ func (hlp *testProxyHelper) init(c *qt.C) {
 
 // addon for test intercept.
 type interceptAddon struct {
-	BaseAddon
+	proxy.BaseAddon
 }
 
-func (*interceptAddon) Request(f *Flow) {
+func (*interceptAddon) Request(f *proxy.Flow) {
 	// intercept request, should not send request to real endpoint
 	if f.Request.URL.Path == "/intercept-request" {
-		f.Response = &Response{
+		f.Response = &proxy.Response{
 			StatusCode: 200,
 			Body:       []byte("intercept-request"),
 		}
 	}
 }
 
-func (*interceptAddon) Response(f *Flow) {
+func (*interceptAddon) Response(f *proxy.Flow) {
 	if f.Request.URL.Path == "/intercept-response" {
-		f.Response = &Response{
+		f.Response = &proxy.Response{
 			StatusCode: 200,
 			Body:       []byte("intercept-response"),
 		}
@@ -143,7 +145,7 @@ func (*interceptAddon) Response(f *Flow) {
 
 // addon for test functions' execute order.
 type testOrderAddon struct {
-	BaseAddon
+	proxy.BaseAddon
 	orders []string
 	mu     sync.Mutex
 }
@@ -189,58 +191,58 @@ func (adn *testOrderAddon) before(c *qt.C, a, b string) {
 	}
 }
 
-func (adn *testOrderAddon) ClientConnected(*ClientConn) {
+func (adn *testOrderAddon) ClientConnected(*proxy.ClientConn) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "ClientConnected")
 }
-func (adn *testOrderAddon) ClientDisconnected(*ClientConn) {
+func (adn *testOrderAddon) ClientDisconnected(*proxy.ClientConn) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "ClientDisconnected")
 }
-func (adn *testOrderAddon) ServerConnected(*ConnContext) {
+func (adn *testOrderAddon) ServerConnected(*proxy.ConnContext) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "ServerConnected")
 }
-func (adn *testOrderAddon) ServerDisconnected(*ConnContext) {
+func (adn *testOrderAddon) ServerDisconnected(*proxy.ConnContext) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "ServerDisconnected")
 }
-func (adn *testOrderAddon) TLSEstablishedServer(*ConnContext) {
+func (adn *testOrderAddon) TLSEstablishedServer(*proxy.ConnContext) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "TLSEstablishedServer")
 }
-func (adn *testOrderAddon) Requestheaders(*Flow) {
+func (adn *testOrderAddon) Requestheaders(*proxy.Flow) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "Requestheaders")
 }
-func (adn *testOrderAddon) Request(*Flow) {
+func (adn *testOrderAddon) Request(*proxy.Flow) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "Request")
 }
-func (adn *testOrderAddon) Responseheaders(*Flow) {
+func (adn *testOrderAddon) Responseheaders(*proxy.Flow) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "Responseheaders")
 }
-func (adn *testOrderAddon) Response(*Flow) {
+func (adn *testOrderAddon) Response(*proxy.Flow) {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "Response")
 }
-func (adn *testOrderAddon) StreamRequestModifier(f *Flow, in io.Reader) io.Reader {
+func (adn *testOrderAddon) StreamRequestModifier(f *proxy.Flow, in io.Reader) io.Reader {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "StreamRequestModifier")
 	return in
 }
-func (adn *testOrderAddon) StreamResponseModifier(f *Flow, in io.Reader) io.Reader {
+func (adn *testOrderAddon) StreamResponseModifier(f *proxy.Flow, in io.Reader) io.Reader {
 	adn.mu.Lock()
 	defer adn.mu.Unlock()
 	adn.orders = append(adn.orders, "StreamResponseModifier")
@@ -713,7 +715,7 @@ func TestOffUpstreamCert(t *testing.T) {
 	httpsEndpoint := helper.httpsEndpoint
 	testOrderAddonInstance := helper.testOrderAddonInstance
 	testProxy := helper.testProxy
-	testProxy.AddAddon(NewUpstreamCertAddon(false))
+	testProxy.AddAddon(addons.NewUpstreamCertAddon(false))
 	getProxyClient := helper.getProxyClient
 	defer helper.ln.Close()
 	go func() { _ = helper.server.Serve(helper.ln) }()

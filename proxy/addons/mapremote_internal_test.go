@@ -1,4 +1,15 @@
-package addon
+// This file contains tests that require access to internal/unexported types and methods.
+//
+// Justification:
+// - mapRemoteItem: Tests the internal matching and replacement logic for map remote rules
+// - mapFrom: Tests the internal request matching logic
+// - match() and replace() methods: Test critical internal behavior for URL rewriting
+//
+// These tests verify the core logic of the MapRemote addon that cannot be adequately
+// tested through the public API alone. The internal matching and replacement algorithms
+// need thorough unit testing to ensure correctness across various edge cases.
+
+package addons
 
 import (
 	"net/url"

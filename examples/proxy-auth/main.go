@@ -9,6 +9,7 @@ import (
 
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 )
 
 type UserAuth struct {
@@ -74,7 +75,7 @@ func main() {
 	}
 	// Set up the authentication handler for the proxy.
 	p.SetAuthProxy(auth.AuthEntrypAuth)
-	p.AddAddon(&proxy.LogAddon{})
+	p.AddAddon(&addons.LogAddon{})
 
 	if err := p.Start(); err != nil {
 		slog.Error("proxy exited", "error", err)

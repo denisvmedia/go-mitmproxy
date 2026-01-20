@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/denisvmedia/go-mitmproxy/addon"
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/proxy/addons"
 	"github.com/denisvmedia/go-mitmproxy/version"
 	"github.com/denisvmedia/go-mitmproxy/web"
 )
@@ -93,7 +93,7 @@ func main() {
 	}
 
 	if !config.UpstreamCert {
-		p.AddAddon(proxy.NewUpstreamCertAddon(false))
+		p.AddAddon(addons.NewUpstreamCertAddon(false))
 		slog.Info("UpstreamCert config false")
 	}
 
@@ -105,16 +105,16 @@ func main() {
 
 	if config.LogFile != "" {
 		// Use instance logger with file output
-		p.AddAddon(proxy.NewInstanceLogAddonWithFile(config.Addr, "", config.LogFile))
+		p.AddAddon(addons.NewInstanceLogAddonWithFile(config.Addr, "", config.LogFile))
 		slog.Info("Logging to file", slog.String("file", config.LogFile))
 	} else {
 		// Use default logger
-		p.AddAddon(&proxy.LogAddon{})
+		p.AddAddon(&addons.LogAddon{})
 	}
 	p.AddAddon(web.NewWebAddon(config.WebAddr))
 
 	if config.MapRemote != "" {
-		mapRemote, err := addon.NewMapRemoteFromFile(config.MapRemote)
+		mapRemote, err := addons.NewMapRemoteFromFile(config.MapRemote)
 		if err != nil {
 			slog.Warn("load map remote error", "error", err)
 		} else {
@@ -123,7 +123,7 @@ func main() {
 	}
 
 	if config.MapLocal != "" {
-		mapLocal, err := addon.NewMapLocalFromFile(config.MapLocal)
+		mapLocal, err := addons.NewMapLocalFromFile(config.MapLocal)
 		if err != nil {
 			slog.Warn("load map local error", "error", err)
 		} else {
@@ -132,7 +132,7 @@ func main() {
 	}
 
 	if config.Dump != "" {
-		dumper := addon.NewDumperWithFilename(config.Dump, config.DumpLevel)
+		dumper := addons.NewDumperWithFilename(config.Dump, config.DumpLevel)
 		p.AddAddon(dumper)
 	}
 

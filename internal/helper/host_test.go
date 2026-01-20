@@ -1,9 +1,11 @@
-package helper
+package helper_test
 
 import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
+
+	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 )
 
 func TestMatchHost(t *testing.T) {
@@ -16,7 +18,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result := MatchHost(address, hosts)
+	result := helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsTrue)
 
 	// Test case 2: Exact match with port
@@ -26,7 +28,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsTrue)
 
 	// Test case 3: No match
@@ -36,7 +38,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsFalse)
 
 	// Test case 4: Wildcard match
@@ -47,7 +49,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsTrue)
 
 	// Test case 5: Wildcard match with port
@@ -58,7 +60,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsTrue)
 
 	// Test case 6: Wildcard mismatch
@@ -69,7 +71,7 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsFalse)
 
 	// Test case 7: Wildcard mismatch
@@ -80,6 +82,6 @@ func TestMatchHost(t *testing.T) {
 		"www.baidu.com",
 		"www.google.com",
 	}
-	result = MatchHost(address, hosts)
+	result = helper.MatchHost(address, hosts)
 	c.Assert(result, qt.IsFalse)
 }
