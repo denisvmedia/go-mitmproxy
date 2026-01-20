@@ -11,6 +11,7 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/cert"
 	"github.com/denisvmedia/go-mitmproxy/internal/helper"
 	"github.com/denisvmedia/go-mitmproxy/proxy"
+	"github.com/denisvmedia/go-mitmproxy/version"
 	"github.com/denisvmedia/go-mitmproxy/web"
 )
 
@@ -74,11 +75,11 @@ func main() {
 	}
 
 	if config.version {
-		fmt.Println("go-mitmproxy: " + p.Version)
+		fmt.Println("go-mitmproxy version " + version.String())
 		os.Exit(0)
 	}
 
-	slog.Info("go-mitmproxy started", slog.String("version", p.Version))
+	slog.Info("go-mitmproxy started", slog.String("version", version.String()))
 
 	if len(config.IgnoreHosts) > 0 {
 		p.SetShouldInterceptRule(func(req *http.Request) bool {

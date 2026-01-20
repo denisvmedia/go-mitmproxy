@@ -26,8 +26,8 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager with the given configuration.
-// upstream is the upstream proxy address. If empty, environment variables will be used.
-// sslInsecure controls whether to skip SSL certificate verification.
+// Upstream is the upstream proxy address. If empty, environment variables will be used.
+// SslInsecure controls whether to skip SSL certificate verification.
 func NewManager(upstream string, sslInsecure bool) *Manager {
 	return &Manager{
 		upstream:    upstream,
@@ -63,7 +63,7 @@ func (m *Manager) GetUpstreamConn(ctx context.Context, req *http.Request) (net.C
 // GetUpstreamProxyURL returns the upstream proxy URL for a given request.
 // It checks in order:
 // 1. Custom upstream proxy function (if set via SetUpstreamProxy)
-// 2. upstream field (if configured)
+// 2. Upstream field (if configured)
 // 3. Environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
 func (m *Manager) GetUpstreamProxyURL(req *http.Request) (*url.URL, error) {
 	if m.upstreamProxy != nil {

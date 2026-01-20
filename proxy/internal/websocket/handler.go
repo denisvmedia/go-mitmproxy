@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
-	"time"
 )
 
 // Handler implements WebSocket handling for the proxy.
@@ -20,7 +19,7 @@ func New() *Handler {
 
 // HandleWSS handles WebSocket Secure (WSS) connections.
 // It upgrades the connection and forwards traffic between client and server.
-func (h *Handler) HandleWSS(res http.ResponseWriter, req *http.Request) {
+func (*Handler) HandleWSS(res http.ResponseWriter, req *http.Request) {
 	logger := slog.Default().With(
 		"in", "websocket.HandleWSS",
 		"host", req.Host,
@@ -97,60 +96,3 @@ func transfer(logger *slog.Logger, server, client io.ReadWriteCloser) {
 		}
 	}
 }
-
-// logErr logs errors, filtering out common expected errors.
-func logErr(logger *slog.Logger, err error) {
-	if err == nil {
-		return
-	}
-	if err == io.EOF {
-		return
-	}
-	if err == io.ErrUnexpectedEOF {
-		return
-	}
-	msg := err.Error()
-	if msg == "read: connection reset by peer" {
-		return
-	}
-	if msg == "write: broken pipe" {
-		return
-	}
-	if strings.Contains(msg, "use of closed network connection") {
-		return
-	}
-	if strings.Contains(msg, "i/o timeout") {
-		return
-	}
-	if strings.Contains(msg, "operation was canceled") {
-		return
-	}
-	if strings.Contains(msg, "context canceled") {
-		return
-	}
-	if strings.Contains(msg, "TLS handshake timeout") {
-		return
-	}
-	if strings.Contains(msg, "server closed idle connection") {
-		return
-	}
-	if strings.Contains(msg, "http: server closed idle connection") {
-		return
-	}
-	if strings.Contains(msg, "connection reset by peer") {
-		return
-	}
-	if strings.Contains(msg, "broken pipe") {
-		return
-	}
-	if strings.Contains(msg, "deadline exceeded") {
-		return
-	}
-	if strings.Contains(msg, "operation timed out") {
-		return
-	}
-
-	_ = time.Now() // Suppress unused import warning
-	logger.Error("unexpected error", "error", err)
-}
-

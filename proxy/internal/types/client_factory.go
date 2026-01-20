@@ -128,4 +128,3 @@ func (*DefaultClientFactory) CreateHTTPSClient(tlsConn *tls.Conn) *http.Client {
 		},
 	}
 }
-

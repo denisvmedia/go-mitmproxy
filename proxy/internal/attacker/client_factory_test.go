@@ -15,11 +15,6 @@ type mockConn struct {
 	net.Conn
 }
 
-// mockTLSConn is a mock implementation of *tls.Conn for testing.
-type mockTLSConn struct {
-	*tls.Conn
-}
-
 func TestDefaultClientFactory(t *testing.T) {
 	factory := NewDefaultClientFactory()
 
@@ -83,10 +78,10 @@ func TestDefaultClientFactory(t *testing.T) {
 
 // customClientFactory is a test implementation of types.ClientFactory.
 type customClientFactory struct {
-	mainClientCalled       bool
-	http2ClientCalled      bool
-	plainHTTPClientCalled  bool
-	httpsClientCalled      bool
+	mainClientCalled      bool
+	http2ClientCalled     bool
+	plainHTTPClientCalled bool
+	httpsClientCalled     bool
 }
 
 func (f *customClientFactory) CreateMainClient(upstreamManager types.UpstreamManager, insecureSkipVerify bool) *http.Client {
@@ -148,4 +143,3 @@ func TestCustomClientFactory(t *testing.T) {
 		}
 	})
 }
-

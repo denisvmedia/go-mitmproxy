@@ -14,6 +14,7 @@ import (
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/conn"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/upstream"
 	"github.com/denisvmedia/go-mitmproxy/proxy/internal/websocket"
+	"github.com/denisvmedia/go-mitmproxy/version"
 )
 
 type Proxy struct {
@@ -54,7 +55,7 @@ func NewProxy(config Config, ca cert.CA) (*Proxy, error) {
 	}
 
 	proxy := &Proxy{
-		Version:         "1.8.8",
+		Version:         version.Version,
 		config:          config,
 		addonRegistry:   addonRegistry,
 		upstreamManager: upstreamManager,

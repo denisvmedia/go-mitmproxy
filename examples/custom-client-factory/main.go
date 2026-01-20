@@ -30,7 +30,7 @@ func NewCustomClientFactory() *CustomClientFactory {
 
 // CreateMainClient overrides the default main client creation.
 // This example adds custom headers to all requests made by the main client.
-func (f *CustomClientFactory) CreateMainClient(upstreamManager proxy.UpstreamManager, insecureSkipVerify bool) *http.Client {
+func (*CustomClientFactory) CreateMainClient(upstreamManager proxy.UpstreamManager, insecureSkipVerify bool) *http.Client {
 	// Create the default client
 	client := &http.Client{
 		Transport: &customTransport{
@@ -63,7 +63,7 @@ func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(req)
 }
 
-// Example 2: A client factory that logs all client creations
+// Example 2: A client factory that logs all client creations.
 type LoggingClientFactory struct {
 	*proxy.DefaultClientFactory
 }
@@ -94,7 +94,7 @@ func (f *LoggingClientFactory) CreateHTTPSClient(tlsConn *tls.Conn) *http.Client
 	return f.DefaultClientFactory.CreateHTTPSClient(tlsConn)
 }
 
-// Example 3: A client factory that uses HTTP/2 for all connections
+// Example 3: A client factory that uses HTTP/2 for all connections.
 type ForceHTTP2ClientFactory struct {
 	*proxy.DefaultClientFactory
 }
@@ -105,7 +105,7 @@ func NewForceHTTP2ClientFactory() *ForceHTTP2ClientFactory {
 	}
 }
 
-func (f *ForceHTTP2ClientFactory) CreatePlainHTTPClient(conn net.Conn) *http.Client {
+func (*ForceHTTP2ClientFactory) CreatePlainHTTPClient(conn net.Conn) *http.Client {
 	// Override to use HTTP/2 even for plain HTTP connections
 	return &http.Client{
 		Transport: &http2.Transport{
@@ -163,4 +163,3 @@ func main() {
 		slog.Error("proxy exited", "error", err)
 	}
 }
-

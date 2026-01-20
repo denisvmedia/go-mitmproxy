@@ -9,4 +9,3 @@ import (
 func NewDefaultClientFactory() types.ClientFactory {
 	return types.NewDefaultClientFactory()
 }
-

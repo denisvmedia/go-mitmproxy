@@ -37,4 +37,3 @@ func (r *Registry) Get() []types.Addon {
 	copy(result, r.addons)
 	return result
 }
-

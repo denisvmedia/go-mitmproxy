@@ -1,11 +1,22 @@
 BIN_DIR := bin
 
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Ldflags for version injection
+LDFLAGS := -s -w \
+	-X github.com/denisvmedia/go-mitmproxy/version.Version=$(VERSION) \
+	-X github.com/denisvmedia/go-mitmproxy/version.Commit=$(COMMIT) \
+	-X github.com/denisvmedia/go-mitmproxy/version.Date=$(DATE)
+
 all: mitmproxy
 
 .PHONY: mitmproxy
 mitmproxy:
 	mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/go-mitmproxy cmd/go-mitmproxy/*.go
+	go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/go-mitmproxy cmd/go-mitmproxy/*.go
 
 .PHONY: dummycert
 dummycert:
